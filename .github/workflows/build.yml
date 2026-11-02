@@ -1,0 +1,40 @@
+name: Compilar y publicar
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar Inno Setup
+        run: choco install innosetup -y --no-progress
+
+      - name: Compilar programa e instalador
+        shell: pwsh
+        run: ./build.ps1
+
+      - name: Guardar instalador
+        uses: actions/upload-artifact@v4
+        with:
+          name: Instalar-Logros-Bloodborne
+          path: dist/*
+
+      - name: Publicar release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $notas = Get-Content docs/NOTAS-$tag.md -Raw -ErrorAction SilentlyContinue
+          if (-not $notas) { $notas = "Logros Bloodborne $tag" }
+          gh release create $tag dist/Instalar-Logros-Bloodborne.exe dist/Instalar-Logros-Bloodborne.exe.sha256 --title "Logros Bloodborne $tag" --notes "$notas"

@@ -1,0 +1,5 @@
+# salida de build.ps1
+bin/
+dist/
+*.pdb
+*.tmp

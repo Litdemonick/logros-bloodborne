@@ -1,0 +1,55 @@
+﻿LOGROS BLOODBORNE  (para bbport)
+================================
+
+Muestra tus trofeos en pantalla mientras jugás Bloodborne con bbport, con
+sonido, y tiene una ventana con todo tu progreso hacia el Platino.
+
+No toca tus partidas ni los archivos del juego: solo LEE el registro de
+trofeos que escribe bbport (bbport\user\trophies.log).
+
+
+CÓMO SE USA
+-----------
+- Busca solo tu bbport. Si no lo encuentra, lo busca en tus discos o te deja
+  elegir la carpeta donde está Bloodborne.exe de bbport.
+- La primera vez tocá "Sincronizar con bbport": aparecen tus trofeos y los
+  que ya tenías van saliendo en orden, una sola vez. Después es automático
+  (y en Configuración podés sincronizar otra vez cuando quieras).
+- Queda en segundo plano (ícono de la copa al lado del reloj). Jugá normal:
+  cuando ganás un trofeo, aparece arriba del juego.
+- Funciona en pantalla completa sin bordes, en ventana y en ventana chica.
+  Si movés la ventana del juego, el aviso la sigue.
+- Cerrar la ventana de logros NO cierra el programa. Para cerrarlo del todo:
+  clic derecho en el ícono de la copa -> "Salir (cerrar del todo)".
+
+
+ATAJOS DE TECLADO (andan mientras jugás)
+----------------------------------------
+  Ctrl+Alt+L   abrir / esconder la lista de logros
+  Ctrl+Alt+O   resumen rápido sobre el juego (progreso, platino, tiempo)
+  Ctrl+Alt+M   mover la notificación: arrastrala, doble clic para guardar
+  Ctrl+Alt+S   sonido sí / no
+  Ctrl+Alt+T   probar una notificación
+
+
+SINCRONIZACIÓN CON BBPORT
+-------------------------
+- Los trofeos que ganes con el programa cerrado (o con las notificaciones
+  apagadas) aparecen después, en el orden en que los ganaste, una sola vez.
+- Si usás "Traer logros de otra instalación" en el launcher de bbport, o
+  "Importar trofeos" en este programa, los nuevos también salen en orden.
+- Los nombres de los trofeos siguen el idioma que elegiste en bbport.
+
+
+CONFIGURACIÓN (botón Configuración en la ventana; lo rápido, clic derecho en la copa)
+---------------------------------------------------------------
+- Notificaciones sí / no, posición (o moverla a mano), tamaño, duración y
+  velocidad de la animación.
+- Formato de hora 12 h / 24 h, idioma (igual que bbport), trofeos ocultos.
+- Sonido, volumen, y tus propios sonidos: poné trophy.wav / platinum.wav /
+  hito.wav (o .mp3) en bbport\user\custom_trophy.
+- Exportar / importar un respaldo de tus trofeos.
+- Iniciar con Windows.
+
+Tus datos y respaldos automáticos de trofeos están en %APPDATA%\LogrosBloodborne.
+Si algo falla, hay un registro en %APPDATA%\LogrosBloodborne\errores.log
