@@ -59,7 +59,7 @@ Avisos con sonido · lista de progreso hacia el Platino · sincronización con b
 ## Primer uso
 
 1. Abrí **Logros Bloodborne**. Busca solo tu bbport, esté donde esté: lo guardado, el launcher de bbport, bbport abierto en ese momento, accesos directos y las carpetas típicas de todos tus discos. Si no lo encuentra, te muestra qué carpeta elegir (la que tiene `Bloodborne.exe`; sirve también la de arriba) y, si abrís bbport mientras tanto, lo detecta solo.
-2. Tocá **Sincronizar con bbport**. Vas a ver tus trofeos, y los que ya tenías salen en orden como avisos, una sola vez. Si en esa PC falta la clave de trofeos (bbport no la trae), funciona igual: ves tus trofeos con su ícono y grado, y los nombres aparecen cuando se agrega la clave (la busca sola, o en **Configuración → Sincronización → Elegir archivo…** elegís el `keys.json` exportado desde otra PC).
+2. Tocá **Sincronizar con bbport**. Vas a ver tus trofeos, y los que ya tenías salen en orden como avisos, una sola vez. No hace falta la clave de trofeos (bbport no la trae): el programa ya incluye el nombre y la descripción de cada trofeo en los idiomas de PlayStation, y muestra los íconos y grados reales de tu juego.
 3. Jugá normalmente. Cerrar la ventana **no** cierra el programa: sigue en segundo plano, con el ícono de la copa al lado del reloj. Para cerrarlo del todo: clic derecho en la copa → **Salir**.
 
 ## Atajos de teclado

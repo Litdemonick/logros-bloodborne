@@ -494,11 +494,23 @@ namespace LogrosBB
         }
 
         // Grado de cada trofeo de Bloodborne (id:grado; h = oculto, x = no cuenta para el platino, g1 = DLC).
-        // Son solo datos de la lista (sin textos ni archivos del juego) para funcionar sin la clave.
+        // Junto con Textos.Bloodborne (nombres y descripciones) alcanza para funcionar sin la clave.
         const string TablaBloodborne = "0:Px 1:Gh 2:Gh 3:Gh 4:Gh 5:G 6:G 7:S 8:S 9:S 10:Sh 11:Sh 12:Sh 13:Sh 14:Bh 15:Bh 16:Bh 17:Bh 18:Bh 19:Bh " +
             "20:Bh 21:Bh 22:Bh 23:Bh 24:Bh 25:Bh 26:Bh 27:Bh 28:Bh 29:B 30:B 31:B 32:Bh 33:Bh 34:Gxg1 35:Shxg1 36:Bhxg1 37:Bhxg1 38:Bhxg1 39:Bhxg1";
 
-        static Juego SinClaveJuego(byte[] b, Dictionary<string, KeyValuePair<long, long>> entradas, string juegoDir)
+        // idiomas en orden de preferencia: el elegido en el programa, el del launcher de bbport, español latino, España
+        static List<int> IdiomasPreferidos(string idioma)
+        {
+            var pref = new List<int>();
+            int fijo;
+            if (idioma != "auto" && int.TryParse(idioma, out fijo)) pref.Add(fijo);
+            int lj = IdiomaJuego();
+            if (lj >= 0) pref.Add(lj); // mismo idioma que el launcher de bbport
+            pref.Add(20); pref.Add(3);
+            return pref;
+        }
+
+        static Juego SinClaveJuego(byte[] b, Dictionary<string, KeyValuePair<long, long>> entradas, string juegoDir, string idioma)
         {
             var j = new Juego { SinNombres = true };
             var tabla = new Dictionary<int, string>();
@@ -511,6 +523,16 @@ namespace LogrosBB
             }
             ids.Sort();
             bool conTabla = ids.Count == tabla.Count && ids.All(tabla.ContainsKey);
+            // con la lista conocida de Bloodborne, los nombres salen de Textos (no hace falta la clave)
+            string[] tx = null;
+            if (conTabla)
+                foreach (int p in IdiomasPreferidos(idioma))
+                    if (Textos.Bloodborne.TryGetValue(p, out tx)) break;
+            if (tx != null)
+            {
+                j.SinNombres = false;
+                j.Titulo = tx[0];
+            }
             foreach (int id in ids)
             {
                 string f = conTabla ? tabla[id] : (id == 0 ? "Px" : "B");
@@ -518,14 +540,14 @@ namespace LogrosBB
                 {
                     Id = id, Grado = f[0], Oculto = f.Contains("h"), CuentaPlatino = !f.Contains("x"),
                     Grupo = f.Contains("g1") ? 1 : -1,
-                    Nombre = f[0] == 'P' ? "Platino" : "Trofeo " + id,
-                    Detalle = "Agregá la clave de trofeos para ver el nombre y la descripción."
+                    Nombre = tx != null ? tx[2 + id * 2] : f[0] == 'P' ? "Platino" : "Trofeo " + id,
+                    Detalle = tx != null ? tx[3 + id * 2] : "Agregá la clave de trofeos para ver el nombre y la descripción."
                 };
                 t.Icono = Imagen(b, entradas["TROP" + id.ToString("000") + ".PNG"], 128);
                 t.IconoGris = Gris(t.Icono);
                 j.Trofeos.Add(t);
             }
-            if (j.Trofeos.Any(t => t.Grupo == 1)) j.Grupos[1] = "Contenido descargable";
+            if (j.Trofeos.Any(t => t.Grupo == 1)) j.Grupos[1] = tx != null && tx[1].Length > 0 ? tx[1] : "Contenido descargable";
             if (entradas.ContainsKey("GR001.PNG")) j.IconoGrupo = Imagen(b, entradas["GR001.PNG"], 128);
             j.IconoJuego = ImagenArchivo(Path.Combine(juegoDir, "sce_sys", "icon0.png"), 256);
             if (j.IconoJuego == null && entradas.ContainsKey("ICON0.PNG")) j.IconoJuego = Imagen(b, entradas["ICON0.PNG"], 256);
@@ -545,26 +567,20 @@ namespace LogrosBB
             var entradas = Entradas(b);
 
             // Clave de trofeos (user\config.toml, user\keys.json o la guardada). Sin ella, o si no sirve,
-            // el programa funciona igual: íconos y grados reales, nombres genéricos.
+            // el programa funciona igual: íconos y grados reales, nombres y descripciones de Textos.
             string clave = Clave(userDir);
-            if (clave == null) return SinClaveJuego(b, entradas, juegoDir);
+            if (clave == null) return SinClaveJuego(b, entradas, juegoDir, idioma);
             byte[] k2 = ClaveJuego(clave, juegoDir);
 
             // Idioma: TROP_xx.ESFM con el código de idioma de PS4; 20 = español latino, 03 = España
-            var pref = new List<int>();
-            int fijo;
-            if (idioma != "auto" && int.TryParse(idioma, out fijo)) pref.Add(fijo);
-            int lj = IdiomaJuego();
-            if (lj >= 0) pref.Add(lj); // mismo idioma que el launcher de bbport
-            pref.Add(20); pref.Add(3);
             string xml = null;
-            foreach (int p in pref)
+            foreach (int p in IdiomasPreferidos(idioma))
             {
                 string nom = "TROP_" + p.ToString("00") + ".ESFM";
                 if (entradas.ContainsKey(nom)) { xml = Descifrar(b, entradas[nom], k2); if (xml != null) break; }
             }
             if (xml == null && entradas.ContainsKey("TROP.ESFM")) xml = Descifrar(b, entradas["TROP.ESFM"], k2);
-            if (xml == null) return SinClaveJuego(b, entradas, juegoDir); // la clave no coincide con este juego
+            if (xml == null) return SinClaveJuego(b, entradas, juegoDir, idioma); // la clave no coincide con este juego
 
             var j = new Juego();
             var doc = new XmlDocument();
