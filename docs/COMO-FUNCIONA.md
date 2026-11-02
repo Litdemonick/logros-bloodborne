@@ -6,10 +6,11 @@
 |---|---|
 | Trofeos ganados | `bbport\user\trophies.log`: una línea por trofeo, `id timestamp_unix`, que escribe bbport al desbloquearlo |
 | Nombres, descripciones, grado, ocultos, expansión | `CUSA03173\sce_sys\trophy\trophy00.trp`, archivo del juego del propio jugador |
-| Clave para leer el `.trp` | `trophyKey` en `bbport\user\config.toml` (la trae bbport) |
+| Clave para leer el `.trp` | `trophyKey` en `user\config.toml`, o `ReleaseTrophyKey` en `user\keys.json` (las crea bbport) |
 | ID de trofeos del juego | `sce_sys\npbind.dat` (offset `0x84`, 12 bytes) |
 | Idioma | `language` en `%APPDATA%\bbport-launcher\settings.json` (mismo idioma que bbport) |
-| Carpetas del juego y de usuario | `game_dir` / `user_dir` del mismo `settings.json` |
+| Carpetas del juego y de usuario | `game_dir` / `user_dir` del mismo `settings.json`; si no, `bbport\user`, `%APPDATA%\bbport` o `%APPDATA%\shadPS4` |
+| Carpeta de bbport | Lo guardado, el launcher, bbport abierto (cualquier proceso dentro de su carpeta), accesos directos del escritorio y del menú inicio, y carpetas típicas de cada disco. Acepta la carpeta exacta, la de arriba o una de adentro |
 | Arte y tipografías | `sce_sys\icon0.png`, `sce_sys\pic1.png` y `bbport\_internal\assets\fonts` (Cinzel, Inter) |
 
 ### Lectura del `.trp`

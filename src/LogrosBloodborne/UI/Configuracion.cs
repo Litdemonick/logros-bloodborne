@@ -149,6 +149,15 @@ namespace LogrosBB
             return p;
         }
 
+        void Agregar(Control c)
+        {
+            c.Location = new Point(0, y);
+            cuerpo.Controls.Add(c);
+            y += c.Height + Tema.Px(10);
+        }
+
+        public void IrA(string tab) { if (tab != null && tabs.Items.Any(t => t[0] == tab)) { tabs.Sel = tab; tabs.Invalidate(); } }
+
         static void Abrir(string destino) { try { Process.Start(destino); } catch { } }
 
         Interruptor Switch(bool v, Action<bool> al) { var s = new Interruptor { Encendido = v }; s.Cambio += al; return s; }
@@ -198,8 +207,8 @@ namespace LogrosBB
                                             new[] { "abajo-izquierda", "Abajo a la izquierda" }, new[] { "abajo-derecha", "Abajo a la derecha" } }
                             .Concat(aj.Posicion == "libre" ? new[] { new[] { "libre", "Donde lo dejaste (a mano)" } } : new string[0][]).ToArray(),
                             () => aj.Posicion, k => { if (k == "libre") return; aj.Posicion = k; aj.Guardar(); app.Probar('X'); }));
-                    Fila("Mover a mano", "Arrastrá el aviso a donde quieras. Doble clic o Enter para guardar.",
-                        Btn("Mover el aviso…", () => app.MoverAviso(), AnchoCtl));
+                    Fila("Mover a mano", "Arrastrá el aviso a donde quieras y tocá Guardar. «Restablecer» lo vuelve arriba al centro.",
+                        Grupo(Btn("Mover el aviso…", () => app.MoverAviso(), 150), Btn("Restablecer", () => app.RestablecerPosicion(), 102)));
                     var tam = new Deslizador { Min = 70, Max = 150, Paso = 5, Valor = (int)Math.Round(aj.Tamano * 100), Width = Tema.Px(AnchoCtl), Formato = v => v + "%" };
                     tam.Soltado += v => { aj.Tamano = v / 100.0; aj.Guardar(); app.Probar('X'); };
                     Fila("Tamaño", "Se adapta solo a tu pantalla; esto lo agranda o achica.", tam);
@@ -257,9 +266,7 @@ namespace LogrosBB
 
                 case "acerca":
                     Fila("Logros Bloodborne " + App.Version, "Trofeos sobre el juego para bbport. Proyecto de fans, no oficial: no está afiliado a Sony, FromSoftware ni bbport.", null);
-                    Fila(app.Novedad != null ? "Hay una versión nueva: " + app.Novedad.Version : "Actualizaciones",
-                        app.Novedad != null ? "Se descarga, se verifica (SHA-256) y se instala encima, conservando todo." : "Tenés la versión " + App.Version + ".",
-                        app.Novedad != null ? Btn("Actualizar ahora", () => app.Actualizar(), 170) : Btn("Buscar ahora", () => app.BuscarActualizacion(true), 170));
+                    Agregar(new TarjetaActualizacion(app, cuerpo.ClientSize.Width));
                     Fila("Buscar automáticamente", "Revisa GitHub al abrir y una vez por día. Es lo único que usa internet.",
                         Switch(aj.Actualizaciones, v => { aj.Actualizaciones = v; aj.Guardar(); }));
                     Fila("Código y novedades", "Código abierto (licencia MIT) en GitHub.",

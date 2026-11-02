@@ -10,8 +10,9 @@ trofeos que escribe bbport (bbport\user\trophies.log).
 
 CÓMO SE USA
 -----------
-- Busca solo tu bbport. Si no lo encuentra, lo busca en tus discos o te deja
-  elegir la carpeta donde está Bloodborne.exe de bbport.
+- Busca solo tu bbport, esté donde esté (y si está abierto, lo detecta solo).
+  Si no lo encuentra, te muestra qué carpeta elegir: la que tiene
+  Bloodborne.exe (sirve también la carpeta de arriba).
 - La primera vez tocá "Sincronizar con bbport": aparecen tus trofeos y los
   que ya tenías van saliendo en orden, una sola vez. Después es automático
   (y en Configuración podés sincronizar otra vez cuando quieras).

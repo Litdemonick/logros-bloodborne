@@ -34,24 +34,26 @@ namespace LogrosBB
             return wc;
         }
 
-        // Devuelve la versión nueva si existe, o null (también si no hay internet)
-        public static Novedad Buscar()
+        // Devuelve la versión nueva si existe, o null. Si no se pudo revisar, error dice por qué.
+        public static Novedad Buscar(out string error)
         {
+            error = null;
             try
             {
                 string json;
                 using (var wc = Cliente()) json = wc.DownloadString(Api);
                 var tag = Regex.Match(json, "\"tag_name\"\\s*:\\s*\"v?(\\d+\\.\\d+(?:\\.\\d+)?)\"");
-                if (!tag.Success) return null;
+                if (!tag.Success) { error = "GitHub respondió algo inesperado. Probá de nuevo en un rato."; return null; }
                 var v = Normal(new Version(tag.Groups[1].Value));
                 if (v <= Actual) return null;
                 var url = Regex.Match(json, "\"browser_download_url\"\\s*:\\s*\"([^\"]+/" + Regex.Escape(NombreInstalador) + ")\"");
                 // GitHub publica la huella SHA-256 de cada archivo de la release ("digest")
                 var sha = Regex.Match(json, "\"name\"\\s*:\\s*\"" + Regex.Escape(NombreInstalador) + "\".*?\"digest\"\\s*:\\s*\"sha256:([0-9a-f]{64})\"", RegexOptions.Singleline);
-                if (!url.Success || !sha.Success) return null; // sin verificación no se ofrece
+                if (!url.Success || !sha.Success) { error = "La versión " + v + " todavía se está publicando. Probá de nuevo en unos minutos."; return null; } // sin verificación no se ofrece
                 return new Novedad { Version = v, Url = url.Groups[1].Value, Sha256 = sha.Groups[1].Value };
             }
-            catch { return null; }
+            catch (WebException) { error = "Sin conexión con GitHub. Revisá internet y probá de nuevo."; return null; }
+            catch (Exception ex) { error = "No pude revisar: " + ex.Message; return null; }
         }
 
         // Descarga, verifica la huella SHA-256 que publica GitHub y lanza el instalador silencioso.

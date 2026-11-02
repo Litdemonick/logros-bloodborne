@@ -97,29 +97,31 @@ namespace LogrosBB
         bool Preparar()
         {
             Bbport = Datos.BuscarBbport(Ajustes);
-            while (Bbport == null)
+            if (Bbport == null)
             {
-                string d;
-                using (var b = new Buscador()) { if (b.ShowDialog() != DialogResult.OK) return false; d = b.Elegida; }
-                Ajustes.Bbport = d;
-                Bbport = Datos.BuscarBbport(Ajustes);
-                if (Bbport == null) MessageBox.Show("Esa carpeta no parece ser de bbport (tiene que tener Bloodborne.exe y la carpeta user).", "Logros Bloodborne", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                // no estaba en ningún lugar conocido: la ventana explica qué carpeta elegir y sigue buscando sola
+                using (var b = new Buscador(Buscador.Que.Bbport)) { if (b.ShowDialog() != DialogResult.OK) return false; Bbport = b.Elegida; }
             }
             Ajustes.Bbport = Bbport;
             Tema.CargarFuentes(Bbport);
-            UserDir = Datos.CarpetaUser(Bbport);
-            Aviso.UserDir = UserDir;
             JuegoDir = Datos.BuscarJuego(Ajustes, Bbport);
-            while (JuegoDir == null)
+            if (JuegoDir == null)
             {
-                if (MessageBox.Show("No encontré los archivos del juego.\n\nElegí la carpeta del juego (la que tiene eboot.bin y sce_sys, por ejemplo CUSA03173).", "Logros Bloodborne", MessageBoxButtons.OKCancel, MessageBoxIcon.Information) != DialogResult.OK) return false;
-                string d = Elegir("Carpeta del juego (CUSA03173)");
-                if (d == null) return false;
-                Ajustes.JuegoDir = d;
-                JuegoDir = Datos.BuscarJuego(Ajustes, Bbport);
+                using (var b = new Buscador(Buscador.Que.Juego, Bbport)) { if (b.ShowDialog() != DialogResult.OK) return false; JuegoDir = b.Elegida; }
             }
             Ajustes.JuegoDir = JuegoDir;
             Ajustes.Guardar();
+            Datos.UserElegida = Ajustes.UserDir;
+            UserDir = Datos.CarpetaUser(Bbport);
+            Aviso.UserDir = UserDir;
+            if (Datos.LeerClave(UserDir) == null)
+            {
+                // bbport todavía no creó su configuración (nunca se abrió en esta PC, o la guarda en otro lado):
+                // se espera a que aparezca, sin cerrar el programa
+                using (var e = new Buscador(Buscador.Que.Clave, Bbport)) { if (e.ShowDialog() != DialogResult.OK) return false; UserDir = e.Elegida; }
+                Ajustes.UserDir = UserDir; Ajustes.Guardar();
+                Aviso.UserDir = UserDir;
+            }
             return CargarJuego();
         }
 
@@ -129,16 +131,15 @@ namespace LogrosBB
             Juego j = null;
             try { j = Datos.Cargar(JuegoDir, UserDir, Ajustes.Idioma, out error); }
             catch (Exception ex) { error = "No pude leer los trofeos: " + ex.Message; }
-            if (j == null) { MessageBox.Show(error, "Logros Bloodborne", MessageBoxButtons.OK, MessageBoxIcon.Warning); return false; }
+            if (j == null)
+            {
+                if (error == Datos.SinClave) error = "No encontré la clave de trofeos de bbport (config.toml o keys.json en la carpeta user).";
+                MessageBox.Show(error, "Logros Bloodborne", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return false;
+            }
             Juego = j;
             Aplicar();
             return true;
-        }
-
-        static string Elegir(string desc)
-        {
-            using (var f = new FolderBrowserDialog { Description = desc, ShowNewFolderButton = false })
-                return f.ShowDialog() == DialogResult.OK ? f.SelectedPath : null;
         }
 
         void Aplicar()
@@ -564,7 +565,7 @@ namespace LogrosBB
             {
                 Titulo = "Arrastrame a donde quieras",
                 Linea = "Acá van a salir tus trofeos",
-                Pie = "Doble clic o Enter: guardar · Esc: cancelar · flechas: ajuste fino",
+                Pie = "Arrastralo con el mouse · flechas: ajuste fino",
                 Grado = 'G', Icono = Juego.IconoJuego, Sonar = false, Mover = true, SoloEnJuego = false,
                 AlGuardar = () => { Mensaje("Posición guardada", "Los trofeos van a aparecer ahí"); if (ventana != null) ventana.RefrescarConfig(); }
             });
@@ -656,9 +657,8 @@ namespace LogrosBB
         public void CambiarCarpeta()
         {
             string d;
-            using (var b = new Buscador()) { if (b.ShowDialog() != DialogResult.OK) return; d = b.Elegida; }
-            if (!Datos.EsBbport(d)) { MessageBox.Show("Esa carpeta no parece ser de bbport (tiene que tener Bloodborne.exe y la carpeta user).", "Logros Bloodborne"); return; }
-            Ajustes.Bbport = d; Ajustes.JuegoDir = ""; Ajustes.Sincronizado = false; Ajustes.Guardar();
+            using (var b = new Buscador(Buscador.Que.Bbport)) { if (b.ShowDialog() != DialogResult.OK) return; d = b.Elegida; }
+            Ajustes.Bbport = d; Ajustes.JuegoDir = ""; Ajustes.UserDir = ""; Ajustes.Sincronizado = false; Ajustes.Guardar();
             // reiniciar limpio con la carpeta nueva
             try { Process.Start(Assembly.GetExecutingAssembly().Location, "--reinicio"); } catch { }
             Salir();
@@ -666,34 +666,72 @@ namespace LogrosBB
 
         // ------------------------------------------------------------ actualizaciones
 
+        // Estado de la actualización, que muestra la tarjeta de Configuración → Acerca de.
+        // Buscar sale solo (al abrir y una vez por día), pero instalar siempre lo confirma el jugador.
+        public enum EstadoAct { Nada, Buscando, AlDia, Hay, Confirmar, Descargando, Error }
+        public EstadoAct Act;
+        public string ErrorAct;
+
         public void BuscarActualizacion(bool aPedido)
         {
             if (!aPedido && !Ajustes.Actualizaciones) return;
+            if (Act == EstadoAct.Buscando || Act == EstadoAct.Descargando) return;
+            if (aPedido) Act = EstadoAct.Buscando;
             new Thread(() =>
             {
-                var n = Actualizador.Buscar();
+                string error;
+                var n = Actualizador.Buscar(out error);
                 ContextoUI.Post(_ =>
                 {
-                    Novedad = n;
-                    RefrescarVentana();
-                    if (n != null && !EnJuego && !aPedido)
-                        bandeja.ShowBalloonTip(6000, "Logros Bloodborne " + n.Version + " disponible", "Abrí la lista para actualizar con un clic.", ToolTipIcon.None);
-                    if (aPedido)
-                        MessageBox.Show(n != null ? "Hay una versión nueva: " + n.Version + ".\nUsá el botón «Actualizar» para instalarla." : "Tenés la última versión (" + Version + ").", "Logros Bloodborne");
+                    if (Act == EstadoAct.Descargando || Act == EstadoAct.Confirmar) return; // no pisar lo que el jugador está haciendo
+                    bool antes = Novedad != null;
+                    if (n != null) { Novedad = n; Act = EstadoAct.Hay; }
+                    else if (error == null) { Novedad = null; Act = aPedido ? EstadoAct.AlDia : EstadoAct.Nada; }
+                    else if (aPedido) { Act = EstadoAct.Error; ErrorAct = error; }
+                    else if (Act == EstadoAct.Buscando) Act = Novedad != null ? EstadoAct.Hay : EstadoAct.Nada;
+                    if (antes != (Novedad != null) && ventana != null && ventana.Visible) ventana.RefrescarPie();
+                    if (n != null && !antes && !EnJuego && !aPedido)
+                        bandeja.ShowBalloonTip(6000, "Logros Bloodborne " + n.Version + " disponible", "Abrí Configuración → Acerca de para instalarla.", ToolTipIcon.None);
                 }, null);
             }) { IsBackground = true }.Start();
         }
 
-        public void Actualizar()
+        // Botón «Actualizar» del pie o «Instalar» de la tarjeta: lleva a la tarjeta y pide confirmar ahí
+        public void PedirActualizar()
         {
             if (Novedad == null) return;
-            if (MessageBox.Show("Se va a descargar la versión " + Novedad.Version + ", el programa se cierra, se actualiza solo y vuelve a abrirse.\nTus trofeos y ajustes se mantienen.\n\n¿Actualizar ahora?",
-                    "Logros Bloodborne", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
-            Cursor.Current = Cursors.WaitCursor;
-            string error = Actualizador.Instalar(Novedad);
-            Cursor.Current = Cursors.Default;
-            if (error != null) { MessageBox.Show(error, "Logros Bloodborne", MessageBoxButtons.OK, MessageBoxIcon.Warning); return; }
-            Salir(); // el instalador termina el trabajo y lo vuelve a abrir
+            Act = EstadoAct.Confirmar;
+            MostrarVentana();
+            if (ventana != null) ventana.MostrarConfig("acerca");
+        }
+
+        public void CancelarActualizar() { Act = Novedad != null ? EstadoAct.Hay : EstadoAct.Nada; }
+
+        // Solo después de confirmar: descarga en segundo plano (la ventana no se traba) e instala
+        public void Actualizar()
+        {
+            if (Novedad == null || Act == EstadoAct.Descargando) return;
+            Act = EstadoAct.Descargando;
+            var n = Novedad;
+            new Thread(() =>
+            {
+                string error = Actualizador.Instalar(n);
+                ContextoUI.Post(_ =>
+                {
+                    if (error != null) { Act = EstadoAct.Error; ErrorAct = error; return; }
+                    Salir(); // el instalador termina el trabajo y lo vuelve a abrir
+                }, null);
+            }) { IsBackground = true }.Start();
+        }
+
+        // Vuelve el aviso a su lugar de siempre (arriba al centro), por si se movió a mano
+        public void RestablecerPosicion()
+        {
+            var d = new Ajustes();
+            Ajustes.Posicion = d.Posicion; Ajustes.PosX = d.PosX; Ajustes.PosY = d.PosY;
+            Ajustes.Guardar();
+            Probar('X');
+            if (ventana != null) ventana.RefrescarConfig();
         }
 
         public void AbrirJuego()

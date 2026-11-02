@@ -45,7 +45,7 @@ Avisos con sonido · lista de progreso hacia el Platino · sincronización con b
 | 🔄 **Sincronización** | La primera vez la hacés vos con un botón. Después es automática: los trofeos que ganaste con el programa cerrado salen en orden, una sola vez. |
 | ⏱️ **Tiempo** | Sesión en vivo mientras jugás y tiempo total registrado. bbport no guarda el tiempo jugado; el programa lo mide mientras está abierto. |
 | 🛡️ **Respaldos** | Respaldo automático diario de tus trofeos, más exportar e importar cuando quieras. |
-| ⬆️ **Actualizaciones** | Te avisa cuando hay versión nueva y se actualiza con un clic, verificando la descarga con SHA-256. |
+| ⬆️ **Actualizaciones** | Te avisa cuando hay versión nueva; la ves e instalás desde Configuración → Acerca de, siempre con tu confirmación. La descarga se verifica con SHA-256. |
 
 ## Instalación
 
@@ -58,7 +58,7 @@ Avisos con sonido · lista de progreso hacia el Platino · sincronización con b
 
 ## Primer uso
 
-1. Abrí **Logros Bloodborne**. Busca solo tu bbport. Si no lo encuentra, lo busca en tus discos o te deja elegir la carpeta, que es la que tiene `Bloodborne.exe`.
+1. Abrí **Logros Bloodborne**. Busca solo tu bbport, esté donde esté: lo guardado, el launcher de bbport, bbport abierto en ese momento, accesos directos y las carpetas típicas de todos tus discos. Si no lo encuentra, te muestra qué carpeta elegir (la que tiene `Bloodborne.exe`; sirve también la de arriba) y, si abrís bbport mientras tanto, lo detecta solo.
 2. Tocá **Sincronizar con bbport**. Vas a ver tus trofeos, y los que ya tenías salen en orden como avisos, una sola vez.
 3. Jugá normalmente. Cerrar la ventana **no** cierra el programa: sigue en segundo plano, con el ícono de la copa al lado del reloj. Para cerrarlo del todo: clic derecho en la copa → **Salir**.
 
@@ -122,7 +122,7 @@ Abrí un [issue](https://github.com/Litdemonick/logros-bloodborne/issues) y adju
 
 ## Actualizar y desinstalar
 
-- **Actualizar:** el programa avisa cuando hay versión nueva (*Actualizar* en la ventana o en el menú de la copa). Se cierra, se actualiza en el lugar y se vuelve a abrir, conservando tus ajustes y trofeos. También podés instalar la release nueva encima.
+- **Actualizar:** el programa avisa cuando hay versión nueva. En **Configuración → Acerca de** ves cuál es y tocás **Instalar**; después de confirmar, se cierra, se actualiza en el lugar y se vuelve a abrir, conservando tus ajustes y trofeos. Nunca se instala nada sin que lo confirmes. También podés instalar la release nueva encima.
 - **Desinstalar:** desde *Configuración de Windows → Aplicaciones*. Se quitan el programa, el inicio automático y los ajustes. Se conservan tus respaldos de trofeos en `%APPDATA%\LogrosBloodborne\respaldos`.
 
 ## Compilar desde el código

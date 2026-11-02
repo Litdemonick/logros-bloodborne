@@ -3,7 +3,11 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
+using System.Diagnostics;
 using System.IO;
+using System.Linq;
+using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -29,11 +33,199 @@ namespace LogrosBB
             switch (g) { case 'P': return "de platino"; case 'G': return "de oro"; case 'S': return "de plata"; default: return "de bronce"; }
         }
 
+        // Carpeta de bbport: la que tiene Bloodborne.exe (o Play Bloodborne.exe) junto a sus archivos
         public static bool EsBbport(string d)
         {
-            if (string.IsNullOrEmpty(d) || !Directory.Exists(d)) return false;
-            return File.Exists(Path.Combine(d, "Bloodborne.exe")) &&
-                   (Directory.Exists(Path.Combine(d, "user")) || Directory.Exists(Path.Combine(d, "out")));
+            try
+            {
+                if (string.IsNullOrEmpty(d) || !Directory.Exists(d)) return false;
+                bool exe = File.Exists(Path.Combine(d, "Bloodborne.exe")) || File.Exists(Path.Combine(d, "Play Bloodborne.exe"));
+                return exe && (Directory.Exists(Path.Combine(d, "user")) || Directory.Exists(Path.Combine(d, "out")) ||
+                               Directory.Exists(Path.Combine(d, "_internal")) || File.Exists(Path.Combine(d, "bbport.ini")) ||
+                               Directory.Exists(Path.Combine(d, "launcher")));
+            }
+            catch { return false; }
+        }
+
+        // Acepta la carpeta "casi correcta": la de arriba (donde se descomprimió todo), una de adentro
+        // (user, out, launcher…) o hasta el propio Bloodborne.exe. Devuelve la carpeta de bbport o null.
+        public static string NormalizarBbport(string d)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(d)) return null;
+                d = d.Trim().Trim('"');
+                if (File.Exists(d)) d = Path.GetDirectoryName(d);
+                if (!Directory.Exists(d)) return null;
+                d = Path.GetFullPath(d);
+                if (d.Length > 3) d = d.TrimEnd('\\');
+                // hacia arriba (eligieron una subcarpeta)
+                string p = d;
+                for (int i = 0; i < 4 && p != null; i++, p = Path.GetDirectoryName(p))
+                    if (EsBbport(p)) return p;
+                // hacia abajo (eligieron la carpeta de arriba)
+                return BuscarAdentro(d, 3);
+            }
+            catch { return null; }
+        }
+
+        static readonly string[] noEntrar = { "windows", "$recycle.bin", "system volume information", "programdata", "appdata", "cusa03173", "user", "out", "_internal", "node_modules", ".git" };
+
+        static string BuscarAdentro(string d, int prof)
+        {
+            if (prof <= 0) return null;
+            string[] subs;
+            try { subs = Directory.GetDirectories(d); } catch { return null; }
+            // primero las carpetas con nombres probables
+            var orden = subs.OrderBy(x => Regex.IsMatch(Path.GetFileName(x), "bbport|bloodborne", RegexOptions.IgnoreCase) ? 0 : 1).ToList();
+            foreach (var s in orden) if (EsBbport(s)) return s;
+            foreach (var s in orden)
+            {
+                if (noEntrar.Contains(Path.GetFileName(s).ToLowerInvariant())) continue;
+                try { if ((File.GetAttributes(s) & FileAttributes.ReparsePoint) != 0) continue; } catch { continue; }
+                var r = BuscarAdentro(s, prof - 1);
+                if (r != null) return r;
+            }
+            return null;
+        }
+
+        // Destino de un acceso directo .lnk (por COM, sin referencias extra)
+        static string DestinoLnk(string lnk)
+        {
+            try
+            {
+                var t = Type.GetTypeFromProgID("WScript.Shell");
+                if (t == null) return null;
+                object sh = Activator.CreateInstance(t);
+                object l = t.InvokeMember("CreateShortcut", BindingFlags.InvokeMethod, null, sh, new object[] { lnk });
+                return l.GetType().InvokeMember("TargetPath", BindingFlags.GetProperty, null, l, null) as string;
+            }
+            catch { return null; }
+        }
+
+        // Accesos directos de bbport en el escritorio y el menú inicio
+        static List<string> DesdeAccesos()
+        {
+            var r = new List<string>();
+            var lugares = new[] {
+                new { C = Environment.SpecialFolder.DesktopDirectory, Sub = false }, new { C = Environment.SpecialFolder.CommonDesktopDirectory, Sub = false },
+                new { C = Environment.SpecialFolder.StartMenu, Sub = true }, new { C = Environment.SpecialFolder.CommonStartMenu, Sub = true } };
+            foreach (var x in lugares)
+            {
+                string[] lnks;
+                try { lnks = Directory.GetFiles(Environment.GetFolderPath(x.C), "*.lnk", x.Sub ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly); }
+                catch { continue; }
+                foreach (var l in lnks)
+                {
+                    if (!Regex.IsMatch(Path.GetFileNameWithoutExtension(l), "bloodborne|bbport", RegexOptions.IgnoreCase)) continue;
+                    string t = DestinoLnk(l);
+                    if (!string.IsNullOrEmpty(t)) r.Add(t);
+                }
+            }
+            return r;
+        }
+
+        [DllImport("kernel32.dll")] static extern IntPtr OpenProcess(uint acc, bool inh, int pid);
+        [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr h);
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] static extern bool QueryFullProcessImageName(IntPtr h, int flags, StringBuilder s, ref int size);
+
+        static string RutaDe(int pid)
+        {
+            IntPtr h = OpenProcess(0x1000, false, pid); // PROCESS_QUERY_LIMITED_INFORMATION
+            if (h == IntPtr.Zero) return null;
+            try { var sb = new StringBuilder(1024); int n = sb.Capacity; return QueryFullProcessImageName(h, 0, sb, ref n) ? sb.ToString() : null; }
+            finally { CloseHandle(h); }
+        }
+
+        // Programas abiertos ahora mismo que vivan dentro de una carpeta de bbport (launcher o juego,
+        // se llamen como se llamen): si bbport está abierto, se sabe dónde está sin preguntar nada.
+        static List<string> DesdeProcesos()
+        {
+            var r = new List<string>();
+            Process[] ps;
+            try { ps = Process.GetProcesses(); } catch { return r; }
+            foreach (var p in ps)
+                try
+                {
+                    string f = RutaDe(p.Id);
+                    if (f != null && f.IndexOf("\\windows\\",StringComparison.OrdinalIgnoreCase) < 0 &&
+                        Regex.IsMatch(f, "bloodborne|bbport", RegexOptions.IgnoreCase)) r.Add(f);
+                }
+                catch { }
+                finally { p.Dispose(); }
+            return r;
+        }
+
+        public static string BbportAbierto()
+        {
+            foreach (var f in DesdeProcesos())
+            {
+                var n = NormalizarBbport(f);
+                if (n != null) return n;
+            }
+            return null;
+        }
+
+        public static string JuegoDelLauncher() { return NormalizarJuego(LeerLauncher("game_dir")); }
+
+        // Lugares típicos en cualquier PC; se miran pocos niveles, así tarda segundos
+        static IEnumerable<KeyValuePair<string, int>> LugaresTipicos()
+        {
+            string perfil = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            foreach (var x in new[] { "Downloads", "Desktop", "Documents", "Games", "OneDrive\\Desktop", "OneDrive\\Documents", "OneDrive\\Escritorio", "OneDrive\\Documentos" })
+                yield return new KeyValuePair<string, int>(Path.Combine(perfil, x), 3);
+            DriveInfo[] discos;
+            try { discos = DriveInfo.GetDrives(); } catch { yield break; }
+            foreach (var dr in discos)
+            {
+                bool ok;
+                try { ok = dr.IsReady && (dr.DriveType == DriveType.Fixed || dr.DriveType == DriveType.Removable); } catch { ok = false; }
+                if (!ok) continue;
+                string raiz = dr.RootDirectory.FullName;
+                foreach (var s in new[] { "Games", "Juegos", "Bloodborne", "bbport", "Emuladores", "Emulators", "Program Files", "Program Files (x86)" })
+                    yield return new KeyValuePair<string, int>(Path.Combine(raiz, s), 3);
+                yield return new KeyValuePair<string, int>(raiz, 2);
+            }
+        }
+
+        // Búsqueda instantánea al abrir: lo guardado, el launcher, bbport abierto y los accesos directos.
+        // Si no aparece, el Buscador sigue con los lugares típicos en segundo plano (BuscarTipicos).
+        public static string BuscarBbport(Ajustes a)
+        {
+            var directos = new List<string> { a.Bbport, AppDomain.CurrentDomain.BaseDirectory };
+            string ud = LeerLauncher("user_dir"), gd = LeerLauncher("game_dir");
+            if (ud != "") directos.Add(ud);
+            if (gd != "") try { directos.Add(Path.GetDirectoryName(gd.TrimEnd('\\'))); } catch { }
+            foreach (var d in directos)
+            {
+                // lo guardado y lo que dice el launcher: se acepta la carpeta exacta, la de arriba o una de adentro
+                var n = NormalizarBbport(d);
+                if (n != null) return n;
+            }
+            // bbport abierto: lo más seguro, va primero después de lo guardado
+            var abierto = BbportAbierto();
+            if (abierto != null) return abierto;
+            foreach (var f in DesdeAccesos())
+            {
+                var n = NormalizarBbport(f);
+                if (n != null) return n;
+            }
+            return null;
+        }
+
+        public static string BuscarTipicos()
+        {
+            foreach (var kv in LugaresTipicos())
+            {
+                try
+                {
+                    if (!Directory.Exists(kv.Key)) continue;
+                    string n = EsBbport(kv.Key) ? kv.Key : BuscarAdentro(kv.Key, kv.Value);
+                    if (n != null) return Path.GetFullPath(n);
+                }
+                catch { }
+            }
+            return null;
         }
 
         static string LeerLauncher(string clave)
@@ -50,48 +242,127 @@ namespace LogrosBB
             catch { return ""; }
         }
 
-        public static string BuscarBbport(Ajustes a)
-        {
-            var c = new List<string>();
-            string yo = AppDomain.CurrentDomain.BaseDirectory.TrimEnd('\\');
-            c.Add(a.Bbport);
-            c.Add(yo);
-            c.Add(Path.Combine(yo, "bbport"));
-            try { c.Add(Path.GetDirectoryName(yo)); c.Add(Path.Combine(Path.GetDirectoryName(yo), "bbport")); } catch { }
-            string ud = LeerLauncher("user_dir");
-            if (ud != "") try { c.Add(Path.GetDirectoryName(ud.TrimEnd('\\'))); } catch { }
-            foreach (var d in c) if (EsBbport(d)) return Path.GetFullPath(d);
-            return null;
-        }
-
         static string Trp(string juego)
         {
-            if (string.IsNullOrEmpty(juego)) return null;
-            string f = Path.Combine(juego, "sce_sys", "trophy", "trophy00.trp");
-            return File.Exists(f) ? f : null;
+            try
+            {
+                if (string.IsNullOrEmpty(juego)) return null;
+                string f = Path.Combine(juego, "sce_sys", "trophy", "trophy00.trp");
+                return File.Exists(f) ? f : null;
+            }
+            catch { return null; }
+        }
+
+        // Carpeta del juego (CUSA03173 o como se llame): la que tiene sce_sys\trophy\trophy00.trp.
+        // Acepta también la carpeta de arriba o una de adentro (sce_sys, trophy…).
+        public static string NormalizarJuego(string d)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(d)) return null;
+                d = d.Trim().Trim('"');
+                if (File.Exists(d)) d = Path.GetDirectoryName(d);
+                if (!Directory.Exists(d)) return null;
+                d = Path.GetFullPath(d);
+                if (d.Length > 3) d = d.TrimEnd('\\');
+                string p = d;
+                for (int i = 0; i < 3 && p != null; i++, p = Path.GetDirectoryName(p))
+                    if (Trp(p) != null) return p;
+                return JuegoAdentro(d, 3);
+            }
+            catch { return null; }
+        }
+
+        static string JuegoAdentro(string d, int prof)
+        {
+            if (prof <= 0) return null;
+            string[] subs;
+            try { subs = Directory.GetDirectories(d); } catch { return null; }
+            var orden = subs.OrderBy(x => Regex.IsMatch(Path.GetFileName(x), "CUSA|bloodborne|game|juego", RegexOptions.IgnoreCase) ? 0 : 1).ToList();
+            foreach (var s in orden) if (Trp(s) != null) return s;
+            foreach (var s in orden)
+            {
+                string n = Path.GetFileName(s).ToLowerInvariant();
+                if (n == "windows" || n == "$recycle.bin" || n == "_internal" || n == "shader" || n == "cache" || n == "savedata") continue;
+                try { if ((File.GetAttributes(s) & FileAttributes.ReparsePoint) != 0) continue; } catch { continue; }
+                var r = JuegoAdentro(s, prof - 1);
+                if (r != null) return r;
+            }
+            return null;
         }
 
         public static string BuscarJuego(Ajustes a, string bbport)
         {
             var c = new List<string> { a.JuegoDir, LeerLauncher("game_dir") };
-            try
-            {
-                string padre = Path.GetDirectoryName(bbport);
-                c.Add(Path.Combine(padre, "CUSA03173"));
-                c.AddRange(Directory.GetDirectories(padre));
-                c.AddRange(Directory.GetDirectories(bbport));
-            }
-            catch { }
             foreach (var d in c) if (Trp(d) != null) return Path.GetFullPath(d);
-            return null;
+            string padre = null;
+            try { padre = Path.GetDirectoryName(bbport); } catch { }
+            if (padre != null)
+            {
+                // al lado de bbport (lo normal), o un nivel más arriba
+                var r = JuegoAdentro(padre, 2);
+                if (r == null) try { string abuelo = Path.GetDirectoryName(padre); if (abuelo != null && abuelo.Length > 3) r = JuegoAdentro(abuelo, 2); } catch { }
+                if (r != null) return r;
+            }
+            return JuegoAdentro(bbport, 2);
+        }
+
+        // Carpeta de datos de bbport (partidas, trofeos, config.toml). Normalmente bbport\user, pero el
+        // launcher puede apuntarla a otro lado, y bbport (shadPS4) sin carpeta user usa %APPDATA%.
+        public static string UserElegida;
+
+        public static List<string> CandidatasUser(string bbport)
+        {
+            var c = new List<string>();
+            if (!string.IsNullOrEmpty(UserElegida)) c.Add(UserElegida); // la que eligió el jugador a mano
+            string ud = LeerLauncher("user_dir");
+            if (ud != "") c.Add(ud);
+            c.Add(Path.Combine(bbport, "user"));
+            string ad = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+            c.Add(Path.Combine(ad, "bbport", "user"));
+            c.Add(Path.Combine(ad, "bbport"));
+            c.Add(Path.Combine(ad, "shadPS4"));
+            var r = new List<string>();
+            foreach (var d in c)
+                try { if (Directory.Exists(d) && !r.Any(x => x.Equals(Path.GetFullPath(d), StringComparison.OrdinalIgnoreCase))) r.Add(Path.GetFullPath(d)); } catch { }
+            return r;
         }
 
         public static string CarpetaUser(string bbport)
         {
-            string ud = LeerLauncher("user_dir");
-            if (ud != "" && Directory.Exists(ud) && Path.GetFullPath(ud).StartsWith(bbport, StringComparison.OrdinalIgnoreCase))
-                return ud;
-            return Path.Combine(bbport, "user");
+            var c = CandidatasUser(bbport);
+            // la que ya tiene la clave de trofeos, si no la que tiene el registro de trofeos
+            foreach (var d in c) if (LeerClave(d) != null) return d;
+            foreach (var d in c) if (File.Exists(Path.Combine(d, "trophies.log"))) return d;
+            return c.Count > 0 ? c[0] : Path.Combine(bbport, "user");
+        }
+
+        // Clave de trofeos de bbport: user\config.toml (trophyKey) o user\keys.json (ReleaseTrophyKey)
+        public static string LeerClave(string userDir)
+        {
+            try
+            {
+                string toml = Path.Combine(userDir, "config.toml");
+                if (File.Exists(toml))
+                {
+                    var m = Regex.Match(LeerCompartido(toml), "trophyKey\\s*=\\s*[\"']([0-9A-Fa-f]{32})[\"']");
+                    if (m.Success) return m.Groups[1].Value;
+                }
+                string json = Path.Combine(userDir, "keys.json");
+                if (File.Exists(json))
+                {
+                    var m = Regex.Match(LeerCompartido(json), "\"(?:Release)?TrophyKey\"\\s*:\\s*\"([0-9A-Fa-f]{32})\"", RegexOptions.IgnoreCase);
+                    if (m.Success) return m.Groups[1].Value;
+                }
+            }
+            catch { }
+            return null;
+        }
+
+        static string LeerCompartido(string f)
+        {
+            using (var fs = new FileStream(f, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+            using (var sr = new StreamReader(fs)) return sr.ReadToEnd();
         }
 
         public static int IdiomaJuego()
@@ -99,6 +370,8 @@ namespace LogrosBB
             int n;
             return int.TryParse(LeerLauncher("language"), out n) ? n : -1;
         }
+
+        public const string SinClave = "sin-clave";
 
         static ulong BE(byte[] b, long o, int n) { ulong v = 0; for (int i = 0; i < n; i++) v = (v << 8) | b[o + i]; return v; }
 
@@ -109,15 +382,9 @@ namespace LogrosBB
             byte[] b = File.ReadAllBytes(trp);
             if (BE(b, 0, 4) != 0xDCA24D00) { error = "El archivo de trofeos del juego no es válido."; return null; }
 
-            // Clave de trofeos: la trae bbport en user\config.toml
-            string clave = null;
-            string toml = Path.Combine(userDir, "config.toml");
-            if (File.Exists(toml))
-            {
-                var m = Regex.Match(File.ReadAllText(toml), "trophyKey\\s*=\\s*\"([0-9A-Fa-f]{32})\"");
-                if (m.Success) clave = m.Groups[1].Value;
-            }
-            if (clave == null) { error = "No encontré la clave de trofeos en bbport\\user\\config.toml.\nAbrí el juego una vez con bbport y volvé a intentar."; return null; }
+            // Clave de trofeos: la trae bbport en user\config.toml o user\keys.json
+            string clave = LeerClave(userDir);
+            if (clave == null) { error = SinClave; return null; }
 
             byte[] np = new byte[16];
             string npb = Path.Combine(juegoDir, "sce_sys", "npbind.dat");

@@ -110,7 +110,7 @@ namespace LogrosBB
             double auto = Math.Max(1.0, Math.Min(1.6, z0.Height / 1080.0 / Tema.S));
             k = (float)(Tema.S * Math.Max(.7, Math.Min(1.5, Ajustes.Tamano)) * auto);
             float ancho = (plat ? 520 : 490) + 32;
-            int extra = (p.Conteo != null ? 34 : 0) + (string.IsNullOrEmpty(p.Pie) ? -24 : 0);
+            int extra = (p.Conteo != null ? 34 : 0) + (string.IsNullOrEmpty(p.Pie) ? -24 : 0) + (p.Mover ? TiraMover : 0);
             float alto = (plat ? 136 : 124) + extra + 32;
             // ventana de juego chica: el aviso se achica para entrar en ella (no se sale del área del juego)
             if (z0.Width < ancho * k) k = Math.Max(Tema.S * .45f, z0.Width / ancho);
@@ -196,18 +196,46 @@ namespace LogrosBB
         }
 
         // ---- modo mover: arrastrar con el mouse, doble clic / Enter guarda, Esc o clic derecho cancela
+        // Además, dos botones fijos abajo del aviso: Guardar y Cancelar, para no depender de atajos.
+        const int TiraMover = 54;
         Point agarre; bool arrastrando;
+        int sobreBoton; // 0 nada, 1 guardar, 2 cancelar
+
+        RectangleF BotonMover(int cual)
+        {
+            float w = P(132), h = P(34), gap = P(12);
+            float y = Height - P(TiraMover) + (P(TiraMover) - h) / 2 - P(4);
+            float x0 = (Width - (w * 2 + gap)) / 2;
+            return new RectangleF(cual == 1 ? x0 : x0 + w + gap, y, w, h);
+        }
+
+        int BotonEn(Point pt)
+        {
+            if (!p.Mover) return 0;
+            if (BotonMover(1).Contains(pt)) return 1;
+            if (BotonMover(2).Contains(pt)) return 2;
+            return 0;
+        }
 
         protected override void OnMouseDown(MouseEventArgs e)
         {
             base.OnMouseDown(e);
-            if (p.Mover && e.Button == MouseButtons.Left) { arrastrando = true; agarre = e.Location; }
-            if (p.Mover && e.Button == MouseButtons.Right) TerminarMover(false);
+            if (!p.Mover) return;
+            int b = BotonEn(e.Location);
+            if (e.Button == MouseButtons.Left && b == 1) { TerminarMover(true); return; }
+            if (e.Button == MouseButtons.Left && b == 2) { TerminarMover(false); return; }
+            if (e.Button == MouseButtons.Left) { arrastrando = true; agarre = e.Location; }
+            if (e.Button == MouseButtons.Right) TerminarMover(false);
         }
 
         protected override void OnMouseMove(MouseEventArgs e)
         {
             base.OnMouseMove(e);
+            if (p.Mover && !arrastrando)
+            {
+                int b = BotonEn(e.Location);
+                if (b != sobreBoton) { sobreBoton = b; Cursor = b != 0 ? Cursors.Hand : Cursors.SizeAll; Invalidate(); }
+            }
             if (!arrastrando) return;
             bool completa;
             var a = Zona(out completa);
@@ -218,7 +246,7 @@ namespace LogrosBB
         }
 
         protected override void OnMouseUp(MouseEventArgs e) { base.OnMouseUp(e); arrastrando = false; }
-        protected override void OnMouseDoubleClick(MouseEventArgs e) { base.OnMouseDoubleClick(e); if (p.Mover) TerminarMover(true); }
+        protected override void OnMouseDoubleClick(MouseEventArgs e) { base.OnMouseDoubleClick(e); if (p.Mover && BotonEn(e.Location) == 0) TerminarMover(true); }
 
         protected override void OnKeyDown(KeyEventArgs e)
         {
@@ -251,7 +279,10 @@ namespace LogrosBB
                 if (p.AlGuardar != null) p.AlGuardar();
             }
             p.Mover = false;
+            arrastrando = false; sobreBoton = 0; Cursor = Cursors.Default;
+
             total = (int)cron.ElapsedMilliseconds + salida;
+            Invalidate();
         }
 
         protected override void OnShown(EventArgs e)
@@ -371,7 +402,22 @@ namespace LogrosBB
                 }
                 g.Restore(st);
             }
-            if (!p.Mover)
+            if (p.Mover)
+            {
+                float ty = Height - P(TiraMover) - P(2);
+                using (var pen = new Pen(Color.FromArgb(38, 255, 255, 255))) g.DrawLine(pen, P(18), ty, Width - P(18), ty);
+                using (var fb = new Font(Tema.SansSemi, F(9.4f), FontStyle.Bold))
+                    for (int cual = 1; cual <= 2; cual++)
+                    {
+                        var rb = BotonMover(cual);
+                        bool sobre = sobreBoton == cual, prim = cual == 1;
+                        Color fondo = prim ? (sobre ? Color.FromArgb(150, 34, 38) : Color.FromArgb(132, 28, 32)) : (sobre ? Tema.PanelAlto : Tema.Panel);
+                        Color borde = prim ? Color.FromArgb(178, 58, 60) : (sobre ? Color.FromArgb(78, 68, 72) : Tema.Borde);
+                        using (var pr = Tema.Redondo(rb, P(6))) using (var br = new SolidBrush(fondo)) using (var pen = new Pen(borde)) { g.FillPath(br, pr); g.DrawPath(pen, pr); }
+                        Tema.Escribir(g, prim ? "Guardar" : "Cancelar", fb, prim ? Color.FromArgb(246, 236, 220) : Tema.Texto, rb, StringAlignment.Center, false, StringAlignment.Center);
+                    }
+            }
+            else
             {
                 // cuenta regresiva: llena al aparecer, vacía justo cuando empieza a irse
                 float bh = P(3), by = Height - bh;
@@ -418,7 +464,8 @@ namespace LogrosBB
             float sep = P(4);
             float franja = hCnt > 0 ? P(36) : 0;   // franja de contadores, de borde a borde
             float bloque = hTit + sep + hNom + (hPie > 0 ? sep + hPie : 0);
-            float areaH = Height - pad * 2 - barH - franja;
+            float tira = p.Mover ? P(TiraMover) : 0; // botones Guardar / Cancelar del modo mover
+            float areaH = Height - pad * 2 - barH - franja - tira;
             float lado = Math.Min(areaH, P(plat ? 96 : 84));
             var ri = new RectangleF(pad + P(4), pad + (areaH - lado) / 2, lado, lado);
             riCache = ri;
@@ -483,7 +530,7 @@ namespace LogrosBB
                 if (hCnt > 0)
                 {
                     // franja inferior simétrica: línea de margen a margen y 4 columnas iguales (como en bbport)
-                    float fy = Height - barH - pad / 2 - franja;
+                    float fy = Height - barH - pad / 2 - franja - tira;
                     using (var pen = new Pen(Color.FromArgb(38, 255, 255, 255))) g.DrawLine(pen, pad, fy, Width - pad, fy);
                     y = fy + (franja - hCnt) / 2 + P(2);
                     tx = pad; tw = Width - pad * 2;

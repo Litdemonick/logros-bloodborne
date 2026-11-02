@@ -7,7 +7,7 @@ namespace LogrosBB
 {
     class Ajustes
     {
-        public string Bbport = "", JuegoDir = "";
+        public string Bbport = "", JuegoDir = "", UserDir = "";
         public bool Sonido = true;
         public int Volumen = 60;           // ni muy fuerte ni muy bajo
         public bool Avisos = true;         // notificaciones activadas
@@ -47,6 +47,7 @@ namespace LogrosBB
                     {
                         case "bbport": a.Bbport = v; break;
                         case "juego": a.JuegoDir = v; break;
+                        case "user": a.UserDir = v; break;
                         case "sonido": a.Sonido = v != "0"; break;
                         case "volumen": if (int.TryParse(v, out n)) a.Volumen = Math.Max(0, Math.Min(100, n)); break;
                         case "idioma": a.Idioma = v; break;
@@ -85,7 +86,7 @@ namespace LogrosBB
         {
             {
                 Disco.Escribir(Archivo, new[] {
-                    "bbport=" + Bbport, "juego=" + JuegoDir,
+                    "bbport=" + Bbport, "juego=" + JuegoDir, "user=" + UserDir,
                     "sonido=" + (Sonido ? "1" : "0"), "volumen=" + Volumen,
                     "idioma=" + Idioma, "posicion=" + Posicion,
                     "ocultos=" + (MostrarOcultos ? "1" : "0"), "segundos=" + Segundos,

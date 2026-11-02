@@ -26,7 +26,13 @@ namespace LogrosBB
 
         public void RefrescarConfig() { if (EnConfig) config.Mostrar(); }
 
-        public void MostrarConfig()
+        public void RefrescarPie()
+        {
+            bActualizar.Visible = app.Novedad != null;
+            pie.Invalidate();
+        }
+
+        public void MostrarConfig(string tab = null)
         {
             if (config == null)
             {
@@ -39,6 +45,7 @@ namespace LogrosBB
             config.Visible = true;
             panelSync.Visible = Lista.Visible = barra.Visible = false;
             config.BringToFront();
+            config.IrA(tab);
             config.Mostrar();
         }
         readonly Boton bSync;
@@ -151,7 +158,7 @@ namespace LogrosBB
 
             bActualizar = new Boton("Actualizar") { Primario = true, Detras = Color.FromArgb(17, 14, 16), Size = new Size(Tema.Px(120), Tema.Px(26)), Visible = false };
             bActualizar.Font = new Font(Tema.SansSemi, 8.8f, FontStyle.Bold);
-            bActualizar.Click += delegate { app.Actualizar(); };
+            bActualizar.Click += delegate { app.PedirActualizar(); };
             pie.Controls.Add(bActualizar);
             pie.Resize += delegate { bActualizar.Location = new Point(pie.Width - m - bActualizar.Width, (pie.Height - bActualizar.Height) / 2); };
 
