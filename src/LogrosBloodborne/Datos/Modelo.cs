@@ -22,6 +22,7 @@ namespace LogrosBB
     class Juego
     {
         public string Titulo = "Bloodborne";
+        public bool SinNombres;     // falta la clave: íconos y grados sí, nombres no (hasta que se agregue)
         public List<Trofeo> Trofeos = new List<Trofeo>();
         public Dictionary<int, string> Grupos = new Dictionary<int, string>();
         public Bitmap IconoJuego, IconoGrupo, Fondo;

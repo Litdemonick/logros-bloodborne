@@ -6,7 +6,7 @@
 |---|---|
 | Trofeos ganados | `bbport\user\trophies.log`: una línea por trofeo, `id timestamp_unix`, que escribe bbport al desbloquearlo |
 | Nombres, descripciones, grado, ocultos, expansión | `CUSA03173\sce_sys\trophy\trophy00.trp`, archivo del juego del propio jugador |
-| Clave para leer el `.trp` | `trophyKey` en `user\config.toml`, o `ReleaseTrophyKey` en `user\keys.json` (las crea bbport) |
+| Clave para leer el `.trp` | `trophyKey` en `user\config.toml` o `ReleaseTrophyKey` en `user\keys.json`, o la que se agregó en el programa. **bbport no la necesita** (anota los trofeos en `trophies.log` igual), así que en muchas PCs no está: sin ella el programa funciona igual, con los íconos reales (no están cifrados) y los grados de una tabla de la lista de Bloodborne; solo faltan los nombres. La busca sola en discos y pendrives, y se puede elegir un `keys.json`/`config.toml` o exportarla desde otra PC |
 | ID de trofeos del juego | `sce_sys\npbind.dat` (offset `0x84`, 12 bytes) |
 | Idioma | `language` en `%APPDATA%\bbport-launcher\settings.json` (mismo idioma que bbport) |
 | Carpetas del juego y de usuario | `game_dir` / `user_dir` del mismo `settings.json`; si no, `bbport\user`, `%APPDATA%\bbport` o `%APPDATA%\shadPS4` |

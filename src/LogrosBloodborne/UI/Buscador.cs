@@ -10,11 +10,11 @@ using System.Windows.Forms;
 
 namespace LogrosBB
 {
-    // Lo que falta para arrancar, en cualquier PC: la carpeta de bbport, la del juego, o que bbport
-    // cree su clave de trofeos. Busca solo; si no lo encuentra, explica qué carpeta elegir.
+    // Lo que falta para arrancar, en cualquier PC: la carpeta de bbport o la del juego.
+    // Busca solo; si no lo encuentra, explica qué carpeta elegir.
     class Buscador : Form
     {
-        public enum Que { Bbport, Juego, Clave }
+        public enum Que { Bbport, Juego }
 
         [DllImport("dwmapi.dll")] static extern int DwmSetWindowAttribute(IntPtr h, int attr, ref int val, int size);
         public string Elegida;
@@ -28,7 +28,7 @@ namespace LogrosBB
         readonly System.Windows.Forms.Timer espera = new System.Windows.Forms.Timer { Interval = 2000 };
         volatile bool buscando, cancelar;
 
-        public Buscador(Que que, string bbport = null)
+        public Buscador(Que que, string bbport = null, string textoSalir = "Salir")
         {
             this.que = que; this.bbport = bbport;
             Text = "Logros Bloodborne";
@@ -44,38 +44,29 @@ namespace LogrosBB
             {
                 case Que.Bbport:
                     titulo = "¿DÓNDE ESTÁ TU BBPORT?";
-                    explica = "No lo encontré en los lugares de siempre. Tocá «Elegir carpeta…» y elegí la carpeta bbport " +
-                              "(la que tiene Bloodborne.exe). Si no sabés cuál es, elegí donde descomprimiste Bloodborne: la busco ahí.";
+                    explica = "No lo encontré en los lugares de siempre, y sin bbport la app no puede andar. Tocá «Elegir carpeta…» y elegí la carpeta bbport " +
+                              "(la que tiene Bloodborne.exe), o donde descomprimiste Bloodborne: la busco ahí.";
                     ejemplo = new[] { "0|c|bbport|← elegí esta", "1|a|Bloodborne.exe|", "1|a|Play Bloodborne.exe|", "1|c|user   ·   _internal   ·   launcher|" };
                     estado = "Esperando… si abrís bbport, lo detecto solo.";
                     break;
-                case Que.Juego:
+                default:
                     titulo = "¿DÓNDE ESTÁ EL JUEGO?";
                     explica = "Ya tengo bbport, pero no encontré los archivos del juego. Tocá «Elegir carpeta…» y elegí la carpeta del juego " +
                               "(suele llamarse CUSA03173 y está al lado de bbport). Sirve también la carpeta de arriba: la busco ahí.";
                     ejemplo = new[] { "0|c|CUSA03173|← elegí esta", "1|a|eboot.bin|", "1|c|sce_sys|", "2|c|trophy   →   trophy00.trp|" };
                     estado = bbport != null ? "Tu bbport está en: " + bbport : "";
                     break;
-                default:
-                    titulo = "ESPERANDO A BBPORT";
-                    explica = "bbport guarda la clave de los trofeos en su carpeta user (config.toml o keys.json) la primera vez que arranca el juego. " +
-                              "Tocá «Abrir bbport», entrá al juego hasta el menú y listo: lo detecto solo, no hace falta cerrar nada.";
-                    ejemplo = new[] { "0|c|" + (bbport != null ? Path.GetFileName(bbport) : "bbport") + "|", "1|c|user|← acá la crea bbport", "2|a|config.toml   (o keys.json)|" };
-                    estado = "Esperando a bbport… (lo reviso cada 2 segundos)";
-                    textoBuscar = "Abrir bbport"; textoElegir = "Elegir carpeta user…";
-                    break;
             }
 
-            // el botón principal es el que más ayuda: elegir la carpeta (o abrir bbport, si falta la clave)
-            bElegir = new Boton(textoElegir) { Primario = que != Que.Clave, Size = new Size(Tema.Px(230), Tema.Px(38)) };
-            bBuscar = new Boton(textoBuscar) { Primario = que == Que.Clave, Size = new Size(Tema.Px(230), Tema.Px(38)) };
-            bCancelar = new Boton("Cancelar") { Size = new Size(Tema.Px(130), Tema.Px(34)) };
+            // el botón principal es el que más ayuda: elegir la carpeta
+            bElegir = new Boton(textoElegir) { Primario = true, Size = new Size(Tema.Px(230), Tema.Px(38)) };
+            bBuscar = new Boton(textoBuscar) { Size = new Size(Tema.Px(230), Tema.Px(38)) };
+            bCancelar = new Boton(textoSalir) { Size = new Size(Tema.Px(130), Tema.Px(34)) };
             int cx = ClientSize.Width / 2;
-            var izq = que == Que.Clave ? bBuscar : bElegir; var der = que == Que.Clave ? bElegir : bBuscar;
-            izq.Location = new Point(cx - izq.Width - Tema.Px(6), Tema.Px(330));
-            der.Location = new Point(cx + Tema.Px(6), Tema.Px(330));
+            bElegir.Location = new Point(cx - bElegir.Width - Tema.Px(6), Tema.Px(330));
+            bBuscar.Location = new Point(cx + Tema.Px(6), Tema.Px(330));
             bCancelar.Location = new Point(cx - bCancelar.Width / 2, Tema.Px(392));
-            bBuscar.Click += delegate { if (que == Que.Clave) AbrirBbport(); else Buscar(); };
+            bBuscar.Click += delegate { Buscar(); };
             bElegir.Click += delegate { ElegirAMano(); };
             bCancelar.Click += delegate { cancelar = true; if (!buscando) DialogResult = DialogResult.Cancel; };
             Controls.AddRange(new Control[] { bBuscar, bElegir, bCancelar });
@@ -127,7 +118,7 @@ namespace LogrosBB
                             Tema.Escribir(g, x[3], f3, Tema.Oro, new RectangleF(tx + tw + Tema.Px(14), fy, panel.Right - tx - tw - Tema.Px(24), Tema.Px(22)), StringAlignment.Near, false, StringAlignment.Center);
                     }
                 }
-                Color c = error ? Color.FromArgb(222, 96, 92) : buscando || que == Que.Clave ? Tema.Oro : Tema.Tenue;
+                Color c = error ? Color.FromArgb(222, 96, 92) : buscando ? Tema.Oro : Tema.Tenue;
                 Tema.Escribir(g, estado, f2, c, new RectangleF(Tema.Px(30), Tema.Px(266), ClientSize.Width - Tema.Px(60), Tema.Px(54)), StringAlignment.Center, true);
             }
         }
@@ -160,8 +151,7 @@ namespace LogrosBB
         void ElegirAMano()
         {
             string desc = que == Que.Bbport ? "Elegí la carpeta de bbport (la que tiene Bloodborne.exe)"
-                        : que == Que.Juego ? "Elegí la carpeta del juego (la que tiene eboot.bin y sce_sys, por ejemplo CUSA03173)"
-                        : "Elegí la carpeta user de bbport (la que tiene config.toml o keys.json)";
+                        : "Elegí la carpeta del juego (la que tiene eboot.bin y sce_sys, por ejemplo CUSA03173)";
             if (eligiendo || buscando) return;
             string d;
             eligiendo = true; // mientras está abierto el selector, la revisión automática espera
@@ -191,29 +181,24 @@ namespace LogrosBB
             if (DialogResult != DialogResult.None) return;
             if (ok != null) { espera.Stop(); Terminar(ok); return; }
             if (que == Que.Bbport) Estado("En «" + d + "» no hay bbport. Tiene que ser la carpeta que tiene Bloodborne.exe, o una que la contenga.", true);
-            else if (que == Que.Juego) Estado("En «" + d + "» no está el juego. Tiene que tener sce_sys\\trophy\\trophy00.trp (la carpeta CUSA03173).", true);
-            else Estado("En «" + d + "» no está la clave de trofeos (config.toml o keys.json). Abrí bbport una vez y lo detecto solo.", true);
+            else Estado("En «" + d + "» no está el juego. Tiene que tener sce_sys\\trophy\\trophy00.trp (la carpeta CUSA03173).", true);
         }
 
         string Validar(string d)
         {
             if (que == Que.Bbport) return Datos.NormalizarBbport(d);
-            if (que == Que.Juego) return Datos.NormalizarJuego(d);
-            foreach (var c in new[] { d, Path.Combine(d, "user") })
-                try { if (Directory.Exists(c) && Datos.LeerClave(c) != null) return Path.GetFullPath(c); } catch { }
-            return null;
+            return Datos.NormalizarJuego(d);
         }
 
         void Terminar(string d) { Elegida = d; DialogResult = DialogResult.OK; }
 
-        // ---------------------------------------------------------------- clave de trofeos
+        // ---------------------------------------------------------------- detección automática (cada 2 s)
 
         bool revisando, eligiendo, tipicosVistos;
         void Revisar()
         {
             if (revisando || buscando || eligiendo || DialogResult != DialogResult.None) return;
             revisando = true;
-            string b = bbport;
             var q = que;
             // fuera del hilo de la ventana: mirar los procesos no traba nada
             ThreadPool.QueueUserWorkItem(_ =>
@@ -226,25 +211,12 @@ namespace LogrosBB
                         hallada = Datos.BbportAbierto();
                         if (hallada == null && !tipicosVistos) { tipicosVistos = true; hallada = Datos.BuscarTipicos(); }
                     }
-                    else if (q == Que.Juego) hallada = Datos.JuegoDelLauncher();
-                    else if (b != null) hallada = Datos.CandidatasUser(b).FirstOrDefault(d => Datos.LeerClave(d) != null);
+                    else hallada = Datos.JuegoDelLauncher();
                 }
                 catch { }
                 try { BeginInvoke((Action)(() => { revisando = false; if (hallada != null && !buscando && !eligiendo && DialogResult == DialogResult.None) { espera.Stop(); Terminar(hallada); } })); }
                 catch { }
             });
-        }
-
-        void AbrirBbport()
-        {
-            try
-            {
-                string exe = new[] { "Bloodborne.exe", "Play Bloodborne.exe" }.Select(x => Path.Combine(bbport, x)).FirstOrDefault(File.Exists);
-                if (exe == null) { Estado("No encontré Bloodborne.exe en " + bbport, true); return; }
-                Process.Start(new ProcessStartInfo(exe) { WorkingDirectory = bbport, UseShellExecute = true });
-                Estado("bbport abierto. Entrá al juego: apenas cree la clave, sigo solo…");
-            }
-            catch (Exception ex) { Estado("No pude abrir bbport: " + ex.Message, true); }
         }
 
         // ---------------------------------------------------------------- búsqueda en los discos

@@ -28,7 +28,8 @@ namespace LogrosBB
 
         public void RefrescarPie()
         {
-            bActualizar.Visible = app.Novedad != null;
+            bActualizar.Text = app.Novedad != null ? "Actualizar" : "Agregar clave…";
+            bActualizar.Visible = app.Novedad != null || app.SinNombres;
             pie.Invalidate();
         }
 
@@ -142,6 +143,13 @@ namespace LogrosBB
                 using (var pen = new Pen(Tema.Borde)) g.DrawLine(pen, 0, 0, pie.Width, 0);
                 using (var f = new Font(Tema.Sans, 8.5f))
                 {
+                    if (app.Novedad == null && app.SinNombres)
+                    {
+                        Tema.Escribir(g, app.BuscandoClave ? "Tus trofeos están sincronizados. Buscando la clave para ver los nombres…"
+                                                            : "Tus trofeos están sincronizados, pero sin nombres: falta la clave de trofeos.", f, Tema.Oro,
+                            new RectangleF(m, 0, pie.Width - m * 2 - bActualizar.Width - Tema.Px(12), pie.Height), StringAlignment.Near, false, StringAlignment.Center);
+                        return;
+                    }
                     if (app.Novedad != null)
                     {
                         Tema.Escribir(g, "Hay una versión nueva de Logros Bloodborne: " + app.Novedad.Version + " (tenés " + App.Version + ")", f, Tema.Oro,
@@ -158,7 +166,7 @@ namespace LogrosBB
 
             bActualizar = new Boton("Actualizar") { Primario = true, Detras = Color.FromArgb(17, 14, 16), Size = new Size(Tema.Px(120), Tema.Px(26)), Visible = false };
             bActualizar.Font = new Font(Tema.SansSemi, 8.8f, FontStyle.Bold);
-            bActualizar.Click += delegate { app.PedirActualizar(); };
+            bActualizar.Click += delegate { if (app.Novedad != null) app.PedirActualizar(); else if (app.SinNombres) app.AgregarClave(); };
             pie.Controls.Add(bActualizar);
             pie.Resize += delegate { bActualizar.Location = new Point(pie.Width - m - bActualizar.Width, (pie.Height - bActualizar.Height) / 2); };
 
@@ -275,7 +283,7 @@ namespace LogrosBB
             var j = app.Juego;
             Lista.Juego = j;
             bool sinc = app.Ajustes.Sincronizado;
-            bActualizar.Visible = app.Novedad != null;
+            RefrescarPie();
             bActualizar.Location = new Point(pie.Width - Tema.Px(24) - bActualizar.Width, (pie.Height - bActualizar.Height) / 2);
             if (EnConfig) { Cab.Invalidate(); pie.Invalidate(); RefrescarConfig(); return; }
             panelSync.Visible = !sinc; Lista.Visible = sinc; barra.Visible = sinc;

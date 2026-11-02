@@ -250,6 +250,14 @@ namespace LogrosBB
                     Fila("Respaldo", "Guardá tus trofeos en un archivo o sumá los de otra instalación.",
                         Grupo(Btn("Exportar…", () => app.Exportar(), 120), Btn("Importar…", () => app.Importar(), 120)));
                     Fila("Carpeta de bbport", app.Bbport, Btn("Cambiar…", () => app.CambiarCarpeta(), 120));
+                    if (app.SinNombres)
+                        Fila("Clave de trofeos: falta", app.BuscandoClave
+                                ? "Tus trofeos se sincronizan igual. La estoy buscando en tus discos y pendrives…"
+                                : "Tus trofeos se sincronizan igual, sin nombres. Elegí keys.json o config.toml de la carpeta user de un bbport donde ande.",
+                            Btn("Elegir archivo…", () => app.AgregarClave(), 140));
+                    else
+                        Fila("Clave de trofeos: lista", "Para usar la app en otra PC, exportala (por ejemplo a un pendrive).",
+                            Btn("Exportar clave…", () => app.ExportarClave(), 140));
                     break;
 
                 default:

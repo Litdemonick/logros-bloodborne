@@ -114,15 +114,83 @@ namespace LogrosBB
             Datos.UserElegida = Ajustes.UserDir;
             UserDir = Datos.CarpetaUser(Bbport);
             Aviso.UserDir = UserDir;
-            if (Datos.LeerClave(UserDir) == null)
+            // sin la clave de trofeos se arranca igual (íconos y grados); la clave se busca en segundo plano
+            if (!CargarJuego()) return false;
+            if (SinNombres) BuscarClaveFondo();
+            return true;
+        }
+
+        // ------------------------------------------------------------ clave de trofeos (solo para los nombres)
+
+        public bool SinNombres { get { return Juego != null && Juego.SinNombres; } }
+        public bool BuscandoClave;
+        string claveProbada;
+        volatile bool cerrando;
+
+        void BuscarClaveFondo()
+        {
+            if (BuscandoClave || JuegoDir == null) return;
+            BuscandoClave = true;
+            string juego = JuegoDir;
+            new Thread(() =>
             {
-                // bbport todavía no creó su configuración (nunca se abrió en esta PC, o la guarda en otro lado):
-                // se espera a que aparezca, sin cerrar el programa
-                using (var e = new Buscador(Buscador.Que.Clave, Bbport)) { if (e.ShowDialog() != DialogResult.OK) return false; UserDir = e.Elegida; }
-                Ajustes.UserDir = UserDir; Ajustes.Guardar();
-                Aviso.UserDir = UserDir;
+                string k = null;
+                try { k = Datos.BuscarClaveEnDiscos(juego, () => cerrando); } catch { }
+                ContextoUI.Post(_ =>
+                {
+                    BuscandoClave = false;
+                    if (k != null && SinNombres) { try { Datos.GuardarClave(k); } catch { } RecargarConNombres(); }
+                    else RefrescarVentana();
+                }, null);
+            }) { IsBackground = true, Priority = ThreadPriority.BelowNormal }.Start();
+        }
+
+        // si aparece una clave en la carpeta user (o se copió a mano), se usa sin reiniciar nada
+        void RevisarClave()
+        {
+            string k = Datos.Clave(UserDir);
+            if (k == null || k == claveProbada) return;
+            claveProbada = k;
+            if (Datos.ProbarClave(k, JuegoDir)) RecargarConNombres();
+        }
+
+        void RecargarConNombres()
+        {
+            if (!CargarJuego()) return;
+            RefrescarVentana();
+            if (!SinNombres) Mensaje("Nombres de trofeos listos", "Ya ves el nombre y la descripción de cada trofeo");
+        }
+
+        public void AgregarClave()
+        {
+            string f;
+            using (var d = new OpenFileDialog
+            {
+                Title = "Elegí keys.json o config.toml de la carpeta user de un bbport donde la app ande",
+                Filter = "Clave de trofeos (keys.json, config.toml)|keys.json;config.toml;*.json;*.toml;*.txt|Todos los archivos|*.*",
+                CheckFileExists = true
+            })
+            {
+                if (d.ShowDialog() != DialogResult.OK) return;
+                f = d.FileName;
             }
-            return CargarJuego();
+            string k = Datos.LeerClaveArchivo(f);
+            if (k == null) { Mensaje("Ese archivo no tiene la clave", "Buscá keys.json o config.toml en la carpeta user de bbport"); return; }
+            if (!Datos.ProbarClave(k, JuegoDir)) { Mensaje("Esa clave no sirve para este juego", "Probá con el keys.json de otro bbport"); return; }
+            try { Datos.GuardarClave(k); } catch (Exception ex) { Mensaje("No pude guardar la clave", ex.Message); return; }
+            RecargarConNombres();
+        }
+
+        public void ExportarClave()
+        {
+            string k = Datos.Clave(UserDir);
+            if (k == null) { Mensaje("Todavía no hay clave", "Primero agregala con «Elegir archivo…»"); return; }
+            using (var d = new SaveFileDialog { Title = "Guardar la clave para otra PC (por ejemplo en un pendrive)", FileName = "keys.json", Filter = "keys.json|*.json" })
+            {
+                if (d.ShowDialog() != DialogResult.OK) return;
+                try { Datos.ExportarClave(k, d.FileName); Mensaje("Clave exportada", "En la otra PC: Configuración → Sincronización → Elegir archivo…"); }
+                catch (Exception ex) { Mensaje("No pude guardar el archivo", ex.Message); }
+            }
         }
 
         bool CargarJuego()
@@ -131,12 +199,7 @@ namespace LogrosBB
             Juego j = null;
             try { j = Datos.Cargar(JuegoDir, UserDir, Ajustes.Idioma, out error); }
             catch (Exception ex) { error = "No pude leer los trofeos: " + ex.Message; }
-            if (j == null)
-            {
-                if (error == Datos.SinClave) error = "No encontré la clave de trofeos de bbport (config.toml o keys.json en la carpeta user).";
-                MessageBox.Show(error, "Logros Bloodborne", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return false;
-            }
+            if (j == null) { MessageBox.Show(error, "Logros Bloodborne", MessageBoxButtons.OK, MessageBoxIcon.Warning); return false; }
             Juego = j;
             Aplicar();
             return true;
@@ -421,6 +484,7 @@ namespace LogrosBB
             ticks++;
             if (Ajustes.Sincronizado) try { Sincronizar(false); } catch { }
             if (ticks % 3 == 0 || ticks == 1) Revisar();
+            if (ticks % 15 == 0 && SinNombres) try { RevisarClave(); } catch { }
             if (EnJuego && ticks % 30 == 0) Tiempo.Registrar(inicioProceso, DateTime.Now);
             if (ventana != null && ventana.Visible && EnJuego) ventana.Cab.Invalidate();
             // si se cambia el idioma en el launcher de bbport, los nombres de los trofeos lo siguen
@@ -657,7 +721,7 @@ namespace LogrosBB
         public void CambiarCarpeta()
         {
             string d;
-            using (var b = new Buscador(Buscador.Que.Bbport)) { if (b.ShowDialog() != DialogResult.OK) return; d = b.Elegida; }
+            using (var b = new Buscador(Buscador.Que.Bbport, null, "Cancelar")) { if (b.ShowDialog() != DialogResult.OK) return; d = b.Elegida; }
             Ajustes.Bbport = d; Ajustes.JuegoDir = ""; Ajustes.UserDir = ""; Ajustes.Sincronizado = false; Ajustes.Guardar();
             // reiniciar limpio con la carpeta nueva
             try { Process.Start(Assembly.GetExecutingAssembly().Location, "--reinicio"); } catch { }
@@ -931,6 +995,7 @@ namespace LogrosBB
 
         public void Salir()
         {
+            cerrando = true;
             try { if (pidJuego != 0) Tiempo.Registrar(inicioProceso, finVentana ?? DateTime.Now); } catch { }
             reloj.Stop();
             if (atajos != null) atajos.Liberar();
