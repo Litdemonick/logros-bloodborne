@@ -116,7 +116,7 @@ Abrí un [issue](https://github.com/Litdemonick/logros-bloodborne/issues) y adju
 ## Privacidad y seguridad
 
 - Solo **lee** el registro de trofeos de bbport. La única escritura en bbport es **Importar**, que pide confirmación y antes guarda una copia (`trophies.log.antes-de-importar`).
-- La única conexión a internet es **buscar actualizaciones** en GitHub, y se puede desactivar. Las descargas se verifican con **SHA-256** antes de instalarse.
+- La única conexión a internet es **buscar actualizaciones** en GitHub, y se puede desactivar. Cada descarga se verifica con la huella **SHA-256** que publica GitHub antes de instalarse.
 - El programa no tiene base de datos ni ejecuta lo que escribís: el buscador solo compara texto en memoria y además se limpia.
 - Tus datos quedan en `%APPDATA%\LogrosBloodborne` y se guardan de forma atómica, con copia `.bak` por si se corta la luz.
 
@@ -134,7 +134,7 @@ cd logros-bloodborne
 ```
 
 - Usa el compilador de C# que trae Windows (.NET Framework 4.x): no necesita Visual Studio.
-- Si tenés [Inno Setup 6](https://jrsoftware.org/isinfo.php), también arma el instalador en `dist\` con su `.sha256`.
+- Si tenés [Inno Setup 6](https://jrsoftware.org/isinfo.php), también arma el instalador en `dist\`.
 
 **Publicar una versión:** subí `AssemblyFileVersion` en `src/LogrosBloodborne/Programa.cs`, agregá `docs/NOTAS-vX.Y.Z.md`, hacé commit y empujá la etiqueta `vX.Y.Z`. GitHub Actions compila y crea la release.
 

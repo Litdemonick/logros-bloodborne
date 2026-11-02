@@ -37,4 +37,4 @@ jobs:
           $tag = "${{ github.ref_name }}"
           $notas = Get-Content docs/NOTAS-$tag.md -Raw -ErrorAction SilentlyContinue
           if (-not $notas) { $notas = "Logros Bloodborne $tag" }
-          gh release create $tag dist/Instalar-Logros-Bloodborne.exe dist/Instalar-Logros-Bloodborne.exe.sha256 --title "Logros Bloodborne $tag" --notes "$notas"
+          gh release create $tag dist/Instalar-Logros-Bloodborne.exe --title "Logros Bloodborne $tag" --notes "$notas"

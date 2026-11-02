@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
     Compila Logros Bloodborne y, si está Inno Setup, arma el instalador.
 
@@ -6,7 +6,7 @@
     No necesita Visual Studio ni el SDK de .NET: usa el compilador de C# que trae Windows
     (.NET Framework 4.x). Resultado:
       bin\Logros Bloodborne.exe            el programa
-      dist\Instalar-Logros-Bloodborne.exe  el instalador (si se encontró Inno Setup 6) + su .sha256
+      dist\Instalar-Logros-Bloodborne.exe  el instalador (si se encontró Inno Setup 6)
 
 .PARAMETER RegenerarIcono
     Vuelve a dibujar assets\icono.ico (el ícono lo dibuja el propio programa).
@@ -62,12 +62,7 @@ if ($iscc) {
     Write-Host "Armando el instalador v$version..."
     & $iscc /Q "/DVersion=$version" (Join-Path $raiz 'installer\LogrosBloodborne.iss')
     if ($LASTEXITCODE -ne 0) { throw 'Falló Inno Setup.' }
-    $inst = Join-Path $raiz 'dist\Instalar-Logros-Bloodborne.exe'
-    # huella para que el actualizador verifique la descarga
-    $hash = (Get-FileHash $inst -Algorithm SHA256).Hash.ToLowerInvariant()
-    [IO.File]::WriteAllText("$inst.sha256", "$hash  Instalar-Logros-Bloodborne.exe`n")
-    Write-Host "  -> $inst"
-    Write-Host "  -> $inst.sha256"
+    Write-Host "  -> $(Join-Path $raiz 'dist\Instalar-Logros-Bloodborne.exe')"
 } else {
     Write-Host 'Inno Setup 6 no está instalado: se compiló solo el programa (el instalador es opcional).'
 }

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Diagnostics;
 using System.IO;
 using System.Net;
@@ -19,7 +19,7 @@ namespace LogrosBB
         public class Novedad
         {
             public Version Version;
-            public string Url, UrlSha;
+            public string Url, Sha256; // huella que publica GitHub para el instalador
         }
 
         public static Version Actual { get { return Normal(Assembly.GetExecutingAssembly().GetName().Version); } }
@@ -45,16 +45,16 @@ namespace LogrosBB
                 if (!tag.Success) return null;
                 var v = Normal(new Version(tag.Groups[1].Value));
                 if (v <= Actual) return null;
-                string patron = "\"browser_download_url\"\\s*:\\s*\"([^\"]+/" + Regex.Escape(NombreInstalador) + "{0})\"";
-                var url = Regex.Match(json, string.Format(patron, ""));
-                var sha = Regex.Match(json, string.Format(patron, "\\.sha256"));
+                var url = Regex.Match(json, "\"browser_download_url\"\\s*:\\s*\"([^\"]+/" + Regex.Escape(NombreInstalador) + ")\"");
+                // GitHub publica la huella SHA-256 de cada archivo de la release ("digest")
+                var sha = Regex.Match(json, "\"name\"\\s*:\\s*\"" + Regex.Escape(NombreInstalador) + "\".*?\"digest\"\\s*:\\s*\"sha256:([0-9a-f]{64})\"", RegexOptions.Singleline);
                 if (!url.Success || !sha.Success) return null; // sin verificación no se ofrece
-                return new Novedad { Version = v, Url = url.Groups[1].Value, UrlSha = sha.Groups[1].Value };
+                return new Novedad { Version = v, Url = url.Groups[1].Value, Sha256 = sha.Groups[1].Value };
             }
             catch { return null; }
         }
 
-        // Descarga, verifica el SHA-256 publicado y lanza el instalador silencioso.
+        // Descarga, verifica la huella SHA-256 que publica GitHub y lanza el instalador silencioso.
         // Devuelve null si todo salió bien, o el motivo por el que no se instaló.
         public static string Instalar(Novedad n)
         {
@@ -63,12 +63,8 @@ namespace LogrosBB
                 string dir = Path.Combine(Path.GetTempPath(), "LogrosBloodborne-actualizacion");
                 Directory.CreateDirectory(dir);
                 string exe = Path.Combine(dir, NombreInstalador);
-                string esperado;
-                using (var wc = Cliente())
-                {
-                    wc.DownloadFile(n.Url, exe);
-                    esperado = wc.DownloadString(n.UrlSha).Trim().Split(new[] { ' ', '\t', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)[0].ToLowerInvariant();
-                }
+                using (var wc = Cliente()) wc.DownloadFile(n.Url, exe);
+                string esperado = n.Sha256;
                 string real;
                 using (var s = File.OpenRead(exe))
                 using (var h = SHA256.Create())

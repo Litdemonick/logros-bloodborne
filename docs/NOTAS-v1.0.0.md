@@ -9,6 +9,4 @@ Primera versión de **Logros Bloodborne**: tus trofeos de Bloodborne (bbport) so
 - Tiempo de sesión en vivo, atajos de teclado y configuración completa dentro de la ventana.
 - Respaldos automáticos, importar/exportar y actualizaciones verificadas con SHA-256.
 
-`Instalar-Logros-Bloodborne.exe.sha256` es la huella para verificar la descarga (la usa el actualizador del programa).
-
 Proyecto de fans, no oficial. No incluye archivos del juego.
