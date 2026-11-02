@@ -41,6 +41,22 @@ namespace LogrosBB
 
         public Boton(string texto) { Text = texto; Cursor = Cursors.Hand; Size = new Size(Tema.Px(110), Tema.Px(34)); }
 
+        // Abre un menú debajo del botón. Si el menú ya estaba abierto, tocar el mismo botón lo cierra
+        // (el clic que lo cerró no lo vuelve a abrir).
+        DateTime menuCerrado;
+        public void Desplegar(ContextMenuStrip m)
+        {
+            if ((DateTime.Now - menuCerrado).TotalMilliseconds < 500) { menuCerrado = DateTime.MinValue; m.Dispose(); return; }
+            m.Closed += (s, e) =>
+            {
+                if (!IsDisposed && e.CloseReason == ToolStripDropDownCloseReason.AppClicked && ClientRectangle.Contains(PointToClient(Cursor.Position)))
+                    menuCerrado = DateTime.Now;
+                BeginInvoke((Action)m.Dispose);
+            };
+            if (m.MinimumSize.Width == 0) m.MinimumSize = new Size(Width, 0);
+            m.Show(this, new Point(0, Height + 4));
+        }
+
         public void Ajustar(int minimo = 0)
         {
             using (var g = CreateGraphics())
@@ -198,7 +214,7 @@ namespace LogrosBB
         }
     }
 
-    // Barra deslizable: se arrastra, se hace clic o se usa la rueda / flechas
+    // Barra deslizable: el valor cambia solo agarrando y arrastrando (la rueda desplaza la página; un clic suelto no cambia nada)
     class Deslizador : Pintado
     {
         public int Min, Max = 100, Paso = 1;
@@ -210,7 +226,7 @@ namespace LogrosBB
 
         public int Valor { get { return val; } set { val = Math.Max(Min, Math.Min(Max, value)); Invalidate(); } }
 
-        public Deslizador() { Size = new Size(Tema.Px(250), Tema.Px(28)); Cursor = Cursors.Hand; TabStop = true; }
+        public Deslizador() { Size = new Size(Tema.Px(250), Tema.Px(28)); Cursor = Cursors.Hand; }
 
         RectangleF Pista { get { return new RectangleF(Tema.Px(8), Height / 2f - Tema.Px(2), Width - Tema.Px(96), Tema.Px(4)); } }
 
@@ -222,27 +238,16 @@ namespace LogrosBB
             if (v != val) { val = Math.Max(Min, Math.Min(Max, v)); Invalidate(); if (Cambio != null) Cambio(val); }
         }
 
-        protected override void OnMouseDown(MouseEventArgs e) { base.OnMouseDown(e); arrastrando = true; Focus(); Poner(e.X); }
-        protected override void OnMouseMove(MouseEventArgs e) { base.OnMouseMove(e); if (arrastrando) Poner(e.X); }
-        protected override void OnMouseUp(MouseEventArgs e) { base.OnMouseUp(e); if (arrastrando && Soltado != null) Soltado(val); arrastrando = false; }
-        protected override void OnMouseWheel(MouseEventArgs e)
+        int desdeX, desdeVal; bool movido;
+        protected override void OnMouseDown(MouseEventArgs e) { base.OnMouseDown(e); if (e.Button != MouseButtons.Left) return; arrastrando = true; movido = false; desdeX = e.X; desdeVal = val; }
+        protected override void OnMouseMove(MouseEventArgs e)
         {
-            base.OnMouseWheel(e);
-            Valor = val + (e.Delta > 0 ? Paso : -Paso);
-            if (Cambio != null) Cambio(val);
-            if (Soltado != null) Soltado(val);
+            base.OnMouseMove(e);
+            if (!arrastrando) return;
+            if (!movido && Math.Abs(e.X - desdeX) < Tema.Px(4)) return; // un clic suelto no cambia el valor
+            movido = true; Poner(e.X);
         }
-        protected override bool IsInputKey(Keys k) { return k == Keys.Left || k == Keys.Right || base.IsInputKey(k); }
-        protected override void OnKeyDown(KeyEventArgs e)
-        {
-            base.OnKeyDown(e);
-            if (e.KeyCode == Keys.Left || e.KeyCode == Keys.Right)
-            {
-                Valor = val + (e.KeyCode == Keys.Right ? Paso : -Paso);
-                if (Cambio != null) Cambio(val);
-                if (Soltado != null) Soltado(val);
-            }
-        }
+        protected override void OnMouseUp(MouseEventArgs e) { base.OnMouseUp(e); if (arrastrando && movido && val != desdeVal && Soltado != null) Soltado(val); arrastrando = false; }
 
         protected override void OnPaint(PaintEventArgs e)
         {

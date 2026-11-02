@@ -364,7 +364,7 @@ namespace LogrosBB
         // Una vez encontrada, la clave se guarda en los datos del programa: no se vuelve a pedir
         static string ArchivoClave
         {
-            get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "LogrosBloodborne", "clave-trofeos.txt"); }
+            get { return Path.Combine(Edicion.CarpetaDatos, "clave-trofeos.txt"); }
         }
 
         public static string ClaveGuardada()

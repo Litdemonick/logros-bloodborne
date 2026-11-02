@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Compila Logros Bloodborne y, si está Inno Setup, arma el instalador.
 
@@ -8,19 +8,24 @@
       bin\Logros Bloodborne.exe            el programa
       dist\Instalar-Logros-Bloodborne.exe  el instalador (si se encontró Inno Setup 6)
 
+.PARAMETER Dev
+    Compila la edición de desarrollo: bin-dev\Logros Bloodborne Dev.exe. Convive con la instalada
+    (otra instancia y otra carpeta de datos, %APPDATA%\LogrosBloodborne-Dev), no arranca con Windows,
+    no busca actualizaciones y no arma instalador.
+
 .PARAMETER RegenerarIcono
     Vuelve a dibujar assets\icono.ico (el ícono lo dibuja el propio programa).
 
 .EXAMPLE
     .\build.ps1
 #>
-param([switch]$RegenerarIcono)
+param([switch]$RegenerarIcono, [switch]$Dev)
 $ErrorActionPreference = 'Stop'
 $raiz = $PSScriptRoot
 $src = Join-Path $raiz 'src\LogrosBloodborne'
-$bin = Join-Path $raiz 'bin'
+$bin = Join-Path $raiz $(if ($Dev) { 'bin-dev' } else { 'bin' })
 $icono = Join-Path $raiz 'assets\icono.ico'
-$exe = Join-Path $bin 'Logros Bloodborne.exe'
+$exe = Join-Path $bin $(if ($Dev) { 'Logros Bloodborne Dev.exe' } else { 'Logros Bloodborne.exe' })
 
 $csc = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
 if (-not (Test-Path $csc)) { $csc = Join-Path $env:WINDIR 'Microsoft.NET\Framework\v4.0.30319\csc.exe' }
@@ -46,11 +51,13 @@ if ($RegenerarIcono -or -not (Test-Path $icono)) {
 }
 
 Write-Host 'Compilando el programa...'
-Compilar $exe @("/win32icon:$icono")
+Compilar $exe @("/win32icon:$icono") + $(if ($Dev) { @('/define:DEV') } else { @() })
 Write-Host "  -> $exe"
 
 # versión: una sola fuente, AssemblyFileVersion en Programa.cs
 $version = ([regex]::Match((Get-Content (Join-Path $src 'Programa.cs') -Raw), 'AssemblyFileVersion\("(\d+\.\d+\.\d+)')).Groups[1].Value
+
+if ($Dev) { Write-Host 'Edición Dev: sin instalador.'; return }
 
 $iscc = @(
     (Join-Path $env:LOCALAPPDATA 'Programs\Inno Setup 6\ISCC.exe'),

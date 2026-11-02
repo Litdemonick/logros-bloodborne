@@ -13,8 +13,8 @@ using System.Windows.Forms;
 [assembly: AssemblyTitle("Logros Bloodborne")]
 [assembly: AssemblyProduct("Logros Bloodborne")]
 [assembly: AssemblyDescription("Trofeos en pantalla para bbport")]
-[assembly: AssemblyVersion("1.0.6.0")]
-[assembly: AssemblyFileVersion("1.0.6.0")]
+[assembly: AssemblyVersion("1.0.7.0")]
+[assembly: AssemblyFileVersion("1.0.7.0")]
 
 namespace LogrosBB
 {
@@ -70,7 +70,7 @@ namespace LogrosBB
         {
             try
             {
-                string dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "LogrosBloodborne");
+                string dir = Edicion.CarpetaDatos;
                 Directory.CreateDirectory(dir);
                 string log = Path.Combine(dir, "errores.log");
                 if (File.Exists(log) && new FileInfo(log).Length > 512 * 1024) File.Copy(log, Path.Combine(dir, "errores.anterior.log"), true);
@@ -87,8 +87,8 @@ namespace LogrosBB
             if (args.Length == 2 && args[0] == "--icono") { GuardarIcono(args[1]); return; }
             bool bandeja = args.Any(a => a.Equals("--bandeja", StringComparison.OrdinalIgnoreCase));
             bool creado;
-            var mutex = new Mutex(true, "LogrosBloodborne_Instancia", out creado);
-            var mostrar = new EventWaitHandle(false, EventResetMode.AutoReset, "LogrosBloodborne_Mostrar");
+            var mutex = new Mutex(true, Edicion.Id + "_Instancia", out creado);
+            var mostrar = new EventWaitHandle(false, EventResetMode.AutoReset, Edicion.Id + "_Mostrar");
             if (!creado && args.Contains("--reinicio"))
             {
                 // reinicio pedido por la copia anterior: esperar a que termine de cerrarse

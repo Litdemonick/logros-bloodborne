@@ -1,5 +1,3 @@
-<div align="center">
-
 # 🏆 Logros Bloodborne
 
 **Tus trofeos de Bloodborne sobre el juego, mientras jugás con [bbport](https://bbport.de).**
@@ -12,8 +10,6 @@ Avisos con sonido · lista de progreso hacia el Platino · sincronización con b
 ![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-0078d4)
 
 **[⬇ Descargar la última versión](https://github.com/Litdemonick/logros-bloodborne/releases/latest)**
-
-</div>
 
 > Proyecto de fans, **no oficial**. No está afiliado a Sony, FromSoftware ni a bbport.
 > **No incluye ningún archivo del juego**: nombres, íconos y tipografías se leen de la instalación de bbport de cada jugador.
@@ -142,13 +138,16 @@ cd logros-bloodborne
 
 ```
 src/LogrosBloodborne/
-  Programa.cs        entrada, instancia única, registro de errores, ícono
-  App.cs             lógica principal: sincronización, detección del juego, avisos, menú
-  Atajos.cs          atajos de teclado globales
-  Actualizador.cs    actualizaciones desde GitHub Releases (verificación SHA-256)
-  Datos/             modelo, lectura de bbport y del .trp, ajustes, tiempo, fechas, escritura segura
-  Audio/Sonido.cs    sonidos sintetizados (o propios del jugador)
-  UI/                tema, aviso, lista, cabecera, ventana, configuración y controles
+  Programa.cs          entrada, instancia única, registro de errores, ícono
+  App.cs               lógica principal: sincronización, detección del juego, avisos, menú
+  Edicion.cs           edición normal o de desarrollo (build.ps1 -Dev)
+  Datos/               lo que se guarda: ajustes, tiempo jugado, escritura segura
+  Trofeos/             lectura de bbport y del .trp, modelo, textos oficiales, fechas
+  Sistema/             atajos de teclado, actualizaciones (SHA-256), sonidos
+  UI/Base/             tema, controles, menús, transición
+  UI/Principal/        ventana, cabecera y lista de trofeos
+  UI/Configuracion/    configuración, tarjeta de actualizaciones, elegir carpetas
+  UI/Avisos/           la notificación sobre el juego
 installer/           script de Inno Setup y LEEME para el usuario
 assets/icono.ico     ícono (lo dibuja el propio programa: build.ps1 -RegenerarIcono)
 docs/                funcionamiento interno y notas de cada versión

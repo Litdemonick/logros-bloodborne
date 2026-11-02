@@ -78,7 +78,7 @@ namespace LogrosBB
 
         static string CarpetaDatos
         {
-            get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "LogrosBloodborne"); }
+            get { return Edicion.CarpetaDatos; }
         }
 
         public App(bool mostrarAlInicio, EventWaitHandle mostrar)
@@ -102,7 +102,7 @@ namespace LogrosBB
             atajos = new Atajos(this);
             if (Ajustes.Atajos) atajos.Registrar();
 
-            Revisar();
+            Revisar(true);
             if (Ajustes.Sincronizado) Sincronizar(true);
 
             reloj.Tick += delegate { Tick(); };
@@ -587,11 +587,31 @@ namespace LogrosBB
         }
         int idiomaVisto = int.MinValue;
 
-        void Revisar()
+        // Buscar el juego recorre los procesos y las ventanas: se hace en segundo plano para que la
+        // ventana y la animación de los avisos nunca se traben. Al arrancar se hace una vez directo.
+        volatile bool revisando;
+
+        void Revisar(bool esperar = false)
         {
-            ActualizarProcesos();
-            Rectangle z; int pid;
-            bool hay = VentanaJuego(out z, out pid);
+            if (esperar)
+            {
+                bool h = false; int p = 0; Rectangle z0;
+                try { ActualizarProcesos(); h = VentanaJuego(out z0, out p); } catch { }
+                Aplicar(h, p);
+                return;
+            }
+            if (revisando) return;
+            revisando = true;
+            ThreadPool.QueueUserWorkItem(_ =>
+            {
+                bool h = false; int p = 0; Rectangle z0;
+                try { ActualizarProcesos(); h = VentanaJuego(out z0, out p); } catch { }
+                try { ContextoUI.Post(__ => { revisando = false; if (!cerrando) Aplicar(h, p); }, null); } catch { revisando = false; }
+            });
+        }
+
+        void Aplicar(bool hay, int pid)
+        {
             bool antes = EnJuego;
             if (hay)
             {
@@ -632,7 +652,10 @@ namespace LogrosBB
 
         // Primera sincronización, a pedido del jugador: después se hace sola cada vez que abre el programa.
         // Rehacer desde cero: con avisos (salen todos en orden, una vez) o sin avisos (solo se recuenta)
-        public void PrimeraSincronizacion(bool conAvisos = true)
+        // Sin argumento sigue lo elegido en «Trofeos que te perdiste» (uno por uno, resumen o sin avisos).
+        public void PrimeraSincronizacion() { PrimeraSincronizacion(!Ajustes.SaltarPerdidos); }
+
+        public void PrimeraSincronizacion(bool conAvisos)
         {
             Ajustes.Sincronizado = true;
             Ajustes.Guardar();
@@ -805,37 +828,24 @@ namespace LogrosBB
 
         // Vuelve a los valores de fábrica solo los ajustes de una pestaña de Configuración.
         // Nunca toca la carpeta de bbport, la sincronización ni los trofeos.
-        public void RestablecerSeccion(string seccion)
+        // Vuelve todos los ajustes a los valores de fábrica (una sola vez, desde Configuración → General).
+        // Nunca toca la carpeta de bbport, la sincronización ni los trofeos.
+        public void RestablecerTodo()
         {
             var d = new Ajustes();
             var a = Ajustes;
-            switch (seccion)
-            {
-                case "avisos":
-                    bool avisosAntes = a.Avisos;
-                    a.Posicion = d.Posicion; a.PosX = d.PosX; a.PosY = d.PosY;
-                    a.Tamano = d.Tamano; a.Segundos = d.Segundos; a.Velocidad = d.Velocidad;
-                    a.Guardar();
-                    if (avisosAntes != d.Avisos) CambiarAvisos(d.Avisos); else Probar('X');
-                    break;
-                case "sonido":
-                    a.Sonido = d.Sonido; a.Volumen = d.Volumen; a.Guardar();
-                    break;
-                case "sync":
-                    a.UnoPorUno = d.UnoPorUno; a.Guardar();
-                    break;
-                case "general":
-                    a.Hora = d.Hora; Fecha.Formato = a.Hora;
-                    a.MostrarOcultos = d.MostrarOcultos;
-                    if (a.Atajos != d.Atajos) CambiarAtajos(d.Atajos);
-                    if (a.Idioma != d.Idioma) CambiarIdioma(d.Idioma);
-                    a.Guardar();
-                    break;
-                case "acerca":
-                    a.Actualizaciones = d.Actualizaciones; a.Guardar();
-                    break;
-            }
-            Mensaje("Sección restablecida", "Volvió a los valores de fábrica");
+            a.Posicion = d.Posicion; a.PosX = d.PosX; a.PosY = d.PosY;
+            a.Tamano = d.Tamano; a.Segundos = d.Segundos; a.Velocidad = d.Velocidad;
+            a.UnoPorUno = d.UnoPorUno; a.SaltarPerdidos = d.SaltarPerdidos;
+            a.Sonido = d.Sonido; a.Volumen = d.Volumen;
+            a.Hora = d.Hora; Fecha.Formato = a.Hora;
+            a.MostrarOcultos = d.MostrarOcultos;
+            a.Actualizaciones = d.Actualizaciones;
+            if (a.Atajos != d.Atajos) CambiarAtajos(d.Atajos);
+            if (a.Idioma != d.Idioma) CambiarIdioma(d.Idioma);
+            a.Guardar();
+            if (a.Avisos != d.Avisos) CambiarAvisos(d.Avisos);
+            else Mensaje("Valores de fábrica", "Todos los ajustes volvieron a como venían");
             RefrescarVentana();
         }
 
@@ -878,6 +888,7 @@ namespace LogrosBB
 
         public void BuscarActualizacion(bool aPedido)
         {
+            if (Edicion.Dev) return; // la de desarrollo no se actualiza con las releases
             if (!aPedido && !Ajustes.Actualizaciones) return;
             if (Act == EstadoAct.Buscando || Act == EstadoAct.Descargando) return;
             if (aPedido) Act = EstadoAct.Buscando;
@@ -949,7 +960,7 @@ namespace LogrosBB
                 else
                     Process.Start(new ProcessStartInfo(Path.Combine(Bbport, "Bloodborne.exe")) { WorkingDirectory = Bbport, UseShellExecute = true });
             }
-            catch (Exception ex) { MessageBox.Show("No pude abrir el juego: " + ex.Message, "Logros Bloodborne"); }
+            catch (Exception ex) { Mensaje("No pude abrir el juego", ex.Message); }
         }
 
         public string TextoTiempo()
@@ -969,17 +980,18 @@ namespace LogrosBB
         {
             get
             {
-                try { using (var k = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(ClaveRun)) return k != null && k.GetValue("LogrosBloodborne") != null; }
+                try { using (var k = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(ClaveRun)) return k != null && k.GetValue(Edicion.Id) != null && !Edicion.Dev; }
                 catch { return false; }
             }
             set
             {
+                if (Edicion.Dev) return; // la de desarrollo nunca arranca con Windows
                 try
                 {
                     using (var k = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(ClaveRun))
                     {
-                        if (value) k.SetValue("LogrosBloodborne", "\"" + Assembly.GetExecutingAssembly().Location + "\" --bandeja");
-                        else k.DeleteValue("LogrosBloodborne", false);
+                        if (value) k.SetValue(Edicion.Id, "\"" + Assembly.GetExecutingAssembly().Location + "\" --bandeja");
+                        else k.DeleteValue(Edicion.Id, false);
                     }
                 }
                 catch { }
@@ -1060,7 +1072,7 @@ namespace LogrosBB
 
         public void Exportar()
         {
-            if (!Ajustes.Sincronizado) { MessageBox.Show("Primero sincronizá con bbport, así hay trofeos para exportar.", "Logros Bloodborne"); return; }
+            if (!Ajustes.Sincronizado) { Mensaje("Todavía no hay trofeos", "Primero sincronizá con bbport"); return; }
             using (var d = new SaveFileDialog
             {
                 Title = "Exportar mis trofeos", Filter = "Respaldo de trofeos (*.txt)|*.txt",
@@ -1080,18 +1092,14 @@ namespace LogrosBB
                 foreach (var t in Juego.Trofeos.Where(x => x.Obtenido != null).OrderBy(x => x.Obtenido))
                     sb.AppendLine(t.Id + " " + (long)(t.Obtenido.Value.ToUniversalTime() - new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc)).TotalSeconds);
                 try { File.WriteAllText(d.FileName, sb.ToString(), new UTF8Encoding(false)); Mensaje("Trofeos exportados", Juego.Obtenidos + " trofeos guardados en el respaldo"); }
-                catch (Exception ex) { MessageBox.Show("No pude guardar: " + ex.Message, "Logros Bloodborne"); }
+                catch (Exception ex) { Mensaje("No pude guardar el respaldo", ex.Message); }
             }
         }
 
         // Suma trofeos de un respaldo o de otro trophies.log (otra instalación). Nunca quita ninguno.
         public void Importar()
         {
-            if (EnJuego)
-            {
-                MessageBox.Show("Cerrá el juego antes de importar trofeos, así bbport no pisa el archivo.\n(El launcher puede quedar abierto.)", "Logros Bloodborne", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                return;
-            }
+            if (EnJuego) { Mensaje("Cerrá el juego para importar", "Así bbport no pisa el archivo (el launcher puede quedar abierto)"); return; }
             using (var d = new OpenFileDialog
             {
                 Title = "Importar trofeos (respaldo .txt o trophies.log de otra instalación)",
@@ -1100,10 +1108,10 @@ namespace LogrosBB
             {
                 if (d.ShowDialog() != DialogResult.OK) return;
                 var otros = Datos.LeerLog(d.FileName);
-                if (otros == null || otros.Count == 0) { MessageBox.Show("Ese archivo no tiene trofeos para importar.", "Logros Bloodborne"); return; }
+                if (otros == null || otros.Count == 0) { Mensaje("Nada para importar", "Ese archivo no tiene trofeos"); return; }
                 var faltan = otros.Where(kv => !conocidos.ContainsKey(kv.Key) && Juego.Buscar(kv.Key) != null).OrderBy(kv => kv.Value).ToList();
                 if (faltan.Count == 0) { Mensaje("Nada para importar", "Ya tenías todos esos trofeos"); return; }
-                if (MessageBox.Show("Se van a sumar " + faltan.Count + " trofeos a tu bbport (no se quita ninguno).\n\n¿Seguimos?", "Logros Bloodborne", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
+                // solo suma (nunca quita) y antes deja una copia del archivo: no hace falta preguntar
                 try
                 {
                     string log = Path.Combine(UserDir, "trophies.log");
@@ -1118,8 +1126,9 @@ namespace LogrosBB
                         sb.Append(kv.Key + " " + (long)(kv.Value.ToUniversalTime() - new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc)).TotalSeconds + "\r\n");
                     File.AppendAllText(log, sb.ToString(), new UTF8Encoding(false));
                     if (Ajustes.Sincronizado) Sincronizar(false, true); else PrimeraSincronizacion(); // salen en orden
+                    Mensaje("Trofeos importados", faltan.Count == 1 ? "Se sumó 1 trofeo a tu bbport" : "Se sumaron " + faltan.Count + " trofeos a tu bbport");
                 }
-                catch (Exception ex) { MessageBox.Show("No pude importar: " + ex.Message, "Logros Bloodborne"); }
+                catch (Exception ex) { Mensaje("No pude importar", ex.Message); }
             }
         }
 

@@ -44,7 +44,7 @@ namespace LogrosBB
             tabs.AnchoFijo = 126;
             tabs.Height = Tema.Px(40);
             tabs.Linea = true;
-            tabs.Cambio += k => Armar();
+            tabs.Cambio += k => { scroll.Valor = 0; Armar(); }; // cada pestaña arranca arriba
             cab.Controls.Add(tabs);
             cab.Resize += delegate { int w = tabs.AnchoTotal(); tabs.Width = w; tabs.Location = new Point((cab.Width - w) / 2, cab.Height - tabs.Height - 1); };
 
@@ -79,18 +79,18 @@ namespace LogrosBB
             scroll.Valor = Math.Min(scroll.Valor, scroll.Maximo);
             scroll.Visible = scroll.Maximo > 0;
             scroll.SetBounds(marco.Width - Tema.Px(18), Tema.Px(6), Tema.Px(12), Math.Max(0, marco.Height - Tema.Px(12)));
-            int top = scroll.Maximo > 0 ? Tema.Px(8) - scroll.Valor : Math.Max(Tema.Px(8), (marco.Height - alto) / 2);
-            cuerpo.SetBounds(cuerpo.Left, top, cuerpo.Width, alto);
+            // siempre desde arriba (nunca centrado): el contenido no salta al cambiar de pestaña
+            cuerpo.SetBounds(cuerpo.Left, Tema.Px(8) - scroll.Valor, cuerpo.Width, alto);
             scroll.Invalidate();
         }
 
         public bool PreFilterMessage(ref Message m)
         {
-            if (m.Msg != 0x020A || !Visible || !IsHandleCreated || scroll.Maximo == 0) return false;
+            if (m.Msg != 0x020A || !Visible || !IsHandleCreated) return false;
             var pos = marco.PointToClient(Cursor.Position);
             if (!marco.ClientRectangle.Contains(pos)) return false;
-            var bajo = Control.FromChildHandle(m.HWnd);
-            if (bajo is Deslizador) return false; // la rueda sobre un deslizador cambia su valor
+            // la rueda siempre desplaza la configuración, aunque el puntero esté sobre una barra (no cambia su valor)
+            if (scroll.Maximo == 0) return true;
             int delta = (short)((m.WParam.ToInt64() >> 16) & 0xFFFF);
             scroll.Poner(scroll.Valor - delta / 120 * Tema.Px(66));
             return true;
@@ -99,6 +99,10 @@ namespace LogrosBB
         protected override void Dispose(bool disposing) { Application.RemoveMessageFilter(this); base.Dispose(disposing); }
 
         public void Mostrar() { Centrar(); Armar(); }
+
+        // desde el clic de un botón de la propia página: se rearma apenas termina el clic (el botón no se
+        // destruye mientras todavía está atendiendo su evento)
+        void Rearmar() { if (IsHandleCreated) BeginInvoke((Action)Armar); else Armar(); }
 
         // Una fila: título + descripción a la izquierda, control a la derecha, todo alineado
         // Una opción = una tarjeta (como las filas de trofeos): título y descripción a la izquierda,
@@ -185,7 +189,7 @@ namespace LogrosBB
             y += c.Height + Tema.Px(10);
         }
 
-        public void IrA(string tab) { if (tab != null && tabs.Items.Any(t => t[0] == tab)) { tabs.Sel = tab; tabs.Invalidate(); } }
+        public void IrA(string tab) { if (tab != null && tabs.Items.Any(t => t[0] == tab) && tab != tabs.Sel) { tabs.Sel = tab; scroll.Valor = 0; tabs.Invalidate(); } }
 
         static void Abrir(string destino) { try { Process.Start(destino); } catch { } }
 
@@ -213,8 +217,7 @@ namespace LogrosBB
                     it.Click += delegate { al(k); b.Text = texto(); };
                     m.Items.Add(it);
                 }
-                m.MinimumSize = new Size(b.Width, 0);
-                m.Show(b, new Point(0, b.Height + 4));
+                b.Desplegar(m);
             };
             return b;
         }
@@ -236,6 +239,12 @@ namespace LogrosBB
                 case "avisos":
                     Fila("Mostrar notificaciones", "Apagadas, los trofeos esperan y salen al volver a prenderlas.",
                         Switch(aj.Avisos, v => app.CambiarAvisos(v)));
+                    Fila("Trofeos que te perdiste", "Los que ganaste con el programa cerrado, y los que ya tenés al sincronizar por primera vez.",
+                        Seg(new[] { "Uno por uno", "Resumen", "Sin avisos" }, aj.SaltarPerdidos ? 2 : aj.UnoPorUno ? 0 : 1,
+                            i => { aj.SaltarPerdidos = i == 2; if (i < 2) aj.UnoPorUno = i == 0; aj.Guardar(); }, 300));
+                    if (Aviso.EnEspera > 0) // solo si de verdad hay avisos esperando: si no, el botón no tiene sentido
+                        Fila("Avisos en espera: " + Aviso.EnEspera, "Salen cuando vuelvas al juego. Si no los querés ver, cancelalos: quedan como vistos.",
+                            Btn("Cancelar avisos", () => { app.CancelarAvisos(); Rearmar(); }, 160));
                     Fila("Posición", "Dónde aparece el aviso sobre el juego.",
                         Desplegable(new[] { new[] { "arriba-centro", "Arriba al centro" }, new[] { "arriba-izquierda", "Arriba a la izquierda" }, new[] { "arriba-derecha", "Arriba a la derecha" },
                                             new[] { "abajo-izquierda", "Abajo a la izquierda" }, new[] { "abajo-derecha", "Abajo a la derecha" } }
@@ -269,20 +278,23 @@ namespace LogrosBB
                     break;
 
                 case "sync":
-                    Fila(aj.Sincronizado ? "Sincronizado con bbport" : "Sin sincronizar",
-                        aj.Sincronizado ? app.Juego.Obtenidos + " de " + app.Juego.Trofeos.Count + " trofeos · se sincroniza solo al abrir el programa." : "Tocá el botón para traer tus trofeos de bbport.",
-                        Btn(aj.Sincronizado ? "Sincronizar ahora" : "Sincronizar", () => { app.SincronizarAhora(); Armar(); }, 160));
                     if (aj.Sincronizado)
-                        Fila("Rehacer desde cero", "Vuelve a leer todos tus trofeos de bbport. Elegí si querés ver los avisos de nuevo o solo recontar.",
-                            Grupo(Confirmar("Ver avisos", () => app.PrimeraSincronizacion(true), 112),
-                                  Confirmar("Sin avisos", () => app.PrimeraSincronizacion(false), 112)));
-                    Fila("Avisos en espera", "Si hay muchos trofeos esperando para salir, cancelalos: quedan como vistos.",
-                        Btn("Cancelar avisos", () => app.CancelarAvisos(), 160));
-                    Fila("Trofeos que te perdiste", "Ganados con el programa cerrado o los avisos apagados.",
-                        Seg(new[] { "Uno por uno", "Resumen", "No mostrar" }, aj.SaltarPerdidos ? 2 : aj.UnoPorUno ? 0 : 1,
-                            i => { aj.SaltarPerdidos = i == 2; if (i < 2) aj.UnoPorUno = i == 0; aj.Guardar(); }));
-                    Fila("Respaldo", "Guardá tus trofeos en un archivo o sumá los de otra instalación.",
-                        Grupo(Btn("Exportar…", () => app.Exportar(), 120), Btn("Importar…", () => app.Importar(), 120)));
+                    {
+                        Fila("Sincronizado con bbport", app.Juego.Obtenidos + " de " + app.Juego.Trofeos.Count + " trofeos · se sincroniza solo mientras el programa está abierto.",
+                            Btn("Sincronizar ahora", () => { app.SincronizarAhora(); Rearmar(); }, 160));
+                        Fila("Rehacer desde cero", "Vuelve a leer todos tus trofeos de bbport. Elegí si querés ver los avisos de nuevo o solo recontar (tocá dos veces).",
+                            Grupo(Confirmar("Ver avisos", () => { app.PrimeraSincronizacion(true); Rearmar(); }, 112),
+                                  Confirmar("Sin avisos", () => { app.PrimeraSincronizacion(false); Rearmar(); }, 112)));
+                        Fila("Respaldo", "Guardá tus trofeos en un archivo o sumá los de otra instalación.",
+                            Grupo(Btn("Exportar…", () => app.Exportar(), 120), Btn("Importar…", () => app.Importar(), 120)));
+                    }
+                    else
+                    {
+                        string modo = aj.SaltarPerdidos ? "sin avisos (solo se cuentan)" : aj.UnoPorUno ? "con un aviso por cada uno" : "con un resumen";
+                        Fila("Sin sincronizar", "Los trofeos que ya tenés van a entrar " + modo + ". Lo cambiás en Notificaciones → Trofeos que te perdiste.",
+                            Btn("Sincronizar", () => { app.SincronizarAhora(); Rearmar(); }, 160));
+                        Fila("Importar trofeos", "Sumá los de un respaldo o de otra instalación de bbport.", Btn("Importar…", () => app.Importar(), 120));
+                    }
                     Fila("Carpeta de bbport", app.Bbport, Btn("Cambiar…", () => app.CambiarCarpeta(), 120));
                     if (app.SinNombres)
                         Fila("Clave de trofeos: falta", app.BuscandoClave
@@ -303,11 +315,14 @@ namespace LogrosBB
                         i => { aj.Hora = i == 1 ? "12" : i == 2 ? "24" : "auto"; Fecha.Formato = aj.Hora; aj.Guardar(); app.RefrescarVentana(); }));
                     Fila("Mostrar trofeos ocultos", "Muestra nombre y descripción de los secretos (spoilers).", Switch(aj.MostrarOcultos, v => { aj.MostrarOcultos = v; aj.Guardar(); app.RefrescarVentana(); }));
                     Fila("Atajos de teclado", "Ctrl+Alt+L lista · O resumen · M mover · S sonido · T probar", Switch(aj.Atajos, v => app.CambiarAtajos(v)));
-                    Fila("Iniciar con Windows", "Queda en segundo plano y nunca te perdés un trofeo.", Switch(App.IniciaConWindows, v => App.IniciaConWindows = v));
+                    if (!Edicion.Dev) // la de desarrollo nunca arranca con Windows: el interruptor no haría nada
+                        Fila("Iniciar con Windows", "Queda en segundo plano y nunca te perdés un trofeo.", Switch(App.IniciaConWindows, v => App.IniciaConWindows = v));
+                    Fila("Valores de fábrica", "Vuelve todos los ajustes a como venían (tocá dos veces). No toca tus trofeos, la sincronización ni la carpeta de bbport.",
+                        Confirmar("Restablecer todo", () => { app.RestablecerTodo(); Rearmar(); }, 160));
                     break;
 
                 case "acerca":
-                    Fila("Logros Bloodborne " + App.Version, "Trofeos sobre el juego para bbport. Proyecto de fans, no oficial: no está afiliado a Sony, FromSoftware ni bbport.", null);
+                    Fila("Logros Bloodborne " + App.Version, "Proyecto de fans, no oficial: no está afiliado a Sony, FromSoftware ni bbport. Solo lee el registro de trofeos de bbport; nunca toca tus partidas ni los archivos del juego.", null);
                     Agregar(new TarjetaActualizacion(app, cuerpo.ClientSize.Width));
                     Fila("Buscar automáticamente", "Revisa GitHub al abrir y una vez por día. Es lo único que usa internet.",
                         Switch(aj.Actualizaciones, v => { aj.Actualizaciones = v; aj.Guardar(); }));
@@ -315,17 +330,14 @@ namespace LogrosBB
                         Grupo(Btn("Ver en GitHub", () => Abrir(App.PaginaRepo), 130), Btn("Novedades", () => Abrir(App.PaginaReleases), 110)));
                     Fila("¿Algo no anda?", "Contalo en GitHub y adjuntá errores.log (está en «Ver mis datos»).",
                         Grupo(Btn("Reportar un problema", () => Abrir(App.PaginaRepo + "/issues"), 170), Btn("Ver mis datos", () => Abrir(App.CarpetaDatosPublica), 120)));
-                    Fila("Tus datos", "Solo se lee el registro de trofeos de bbport; no se tocan tus partidas ni los archivos del juego.", null);
                     break;
             }
-            // al final de cada pestaña: volver esa zona a los valores de fábrica (se confirma en el mismo botón)
-            string sec = tabs.Sel;
-            Fila("Valores de fábrica", "Vuelve solo esta sección a como venía (tocá dos veces). No toca tus trofeos ni la carpeta de bbport.",
-                Confirmar("Restablecer", () => app.RestablecerSeccion(sec), 140));
             alto = y + Tema.Px(4);
             cuerpo.ResumeLayout();
             Ubicar();
-            if (tapar) { SendMessage(cuerpo.Handle, 0x000B, (IntPtr)1, IntPtr.Zero); cuerpo.Invalidate(true); }
+            // con el redibujo apagado Windows trata al cuerpo como oculto y no repinta lo que deja libre al
+            // achicarse: se repinta el marco entero para que no queden restos de la pestaña anterior
+            if (tapar) { SendMessage(cuerpo.Handle, 0x000B, (IntPtr)1, IntPtr.Zero); marco.Invalidate(true); }
         }
     }
 }

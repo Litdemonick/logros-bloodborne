@@ -106,7 +106,7 @@ namespace LogrosBB
         readonly Pedido p;
         readonly System.Windows.Forms.Timer reloj = new System.Windows.Forms.Timer();
         readonly Stopwatch cron = new Stopwatch();
-        Point destino;
+        Point destino, inicio;
         int entrada = 420, salida = 480, total;
         long ultimoCalculo;
         bool plat;
@@ -149,6 +149,7 @@ namespace LogrosBB
             Location = new Point(destino.X + (Ajustes.Posicion.EndsWith("izquierda") ? -P(40) : P(40)), destino.Y);
             if (Ajustes.Posicion == "arriba-centro" || Ajustes.Posicion == "libre" || p.Mover) Location = new Point(destino.X, destino.Y - P(36));
             if (Ajustes.Posicion.StartsWith("abajo")) Location = new Point(destino.X, destino.Y + P(36));
+            inicio = Location;
 
             reloj.Interval = 8;
             reloj.Tick += delegate { Paso(); };
@@ -326,6 +327,12 @@ namespace LogrosBB
 
         static double Suave(double t) { t = Math.Max(0, Math.Min(1, t)); return 1 - Math.Pow(1 - t, 3); }
 
+        // llega pasándose apenas (~4 %) y se acomoda: un rebote corto y prolijo
+        static double Rebote(double t) { t = Math.Max(0, Math.Min(1, t)) - 1; const double c = .9; return 1 + (c + 1) * t * t * t + c * t * t; }
+
+        // mueve la ventana solo si cambió de lugar (cada movimiento de más es trabajo para Windows)
+        void Poner(Point pt) { if (Location != pt) Location = pt; }
+
         bool pausado;
 
         void Paso()
@@ -340,12 +347,12 @@ namespace LogrosBB
             long ms = cron.ElapsedMilliseconds;
             if (ms < entrada)
             {
-                double t = Suave(ms / (double)entrada);
-                Opacity = .97 * t;
-                int ox = Location.X, oy = Location.Y;
-                Location = new Point((int)(ox + (destino.X - ox) * t), (int)(oy + (destino.Y - oy) * t));
-                // pequeño rebote al llegar
-                if (ms > entrada * .7) { int reb = (int)(P(3) * Math.Sin((ms - entrada * .7) / (entrada * .3) * Math.PI)); Location = new Point(Location.X, Location.Y + reb); }
+                // entrada: curva fija según el tiempo (no según el cuadro anterior), con un leve rebote al
+                // llegar; así se ve igual de suave aunque algún cuadro llegue tarde
+                double t = ms / (double)entrada;
+                double pos = Rebote(t);
+                Opacity = .97 * Suave(t * 1.4);
+                Poner(new Point((int)Math.Round(inicio.X + (destino.X - inicio.X) * pos), (int)Math.Round(inicio.Y + (destino.Y - inicio.Y) * pos)));
             }
             else if (ms < total - salida)
             {
@@ -354,9 +361,9 @@ namespace LogrosBB
                 if (Location != destino)
                 {
                     int dx = destino.X - Location.X, dy = destino.Y - Location.Y;
-                    Location = Math.Abs(dx) + Math.Abs(dy) < 3 ? destino : new Point(Location.X + (int)(dx * .35), Location.Y + (int)(dy * .35));
+                    Poner(Math.Abs(dx) + Math.Abs(dy) < 3 ? destino : new Point(Location.X + (int)(dx * .35), Location.Y + (int)(dy * .35)));
                 }
-                Opacity = .97;
+                if (Opacity != .97) Opacity = .97;
                 if (ms % 1000 < 20) SetWindowPos(Handle, new IntPtr(-1), 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0010);
             }
             else if (ms < total)
@@ -365,8 +372,8 @@ namespace LogrosBB
                 double t = Suave((ms - (total - salida)) / (double)salida);
                 Opacity = .97 * (1 - t);
                 bool abajo = Ajustes.Posicion.StartsWith("abajo") || (Ajustes.Posicion == "libre" && Ajustes.PosY > .5);
-                int dy = (int)(P(26) * t) * (abajo ? 1 : -1);
-                Location = new Point(destino.X, destino.Y + dy);
+                int dy = (int)Math.Round(P(26) * t) * (abajo ? 1 : -1);
+                Poner(new Point(destino.X, destino.Y + dy));
             }
             else
             {

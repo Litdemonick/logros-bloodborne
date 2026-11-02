@@ -75,7 +75,7 @@ namespace LogrosBB
         public Ventana(App a)
         {
             app = a;
-            Text = "Logros · Bloodborne";
+            Text = Edicion.Dev ? "Logros · Bloodborne (Dev)" : "Logros · Bloodborne";
             try { Icon = App.IconoPrograma; } catch { }
             BackColor = Tema.Fondo;
             ForeColor = Tema.Texto;
@@ -142,7 +142,7 @@ namespace LogrosBB
 
             bOrden = new Boton("Orden");
             bOrden.Width = Tema.Px(96);
-            bOrden.Click += delegate { MenuOrden().Show(bOrden, new Point(0, bOrden.Height + 4)); };
+            bOrden.Click += delegate { bOrden.Desplegar(MenuOrden()); };
             barra.Controls.Add(bOrden);
             bConfig = new Boton("Configuración") { Dibujo = Tema.Engranaje };
             bConfig.Width = Tema.Px(42);
@@ -203,6 +203,11 @@ namespace LogrosBB
             bSync.Ajustar(240); bSync.Height = Tema.Px(42);
             bSync.Click += delegate { app.PrimeraSincronizacion(); };
             panelSync.Controls.Add(bSync);
+            // antes de sincronizar se elige cómo entran los trofeos que ya tenés (es el mismo ajuste que
+            // Configuración → Notificaciones → Trofeos que te perdiste)
+            segPrimera = new Segmentado { Opciones = new[] { "Uno por uno", "Resumen", "Sin avisos" }, Detras = Tema.Panel, Width = Tema.Px(330) };
+            segPrimera.Cambio += i => { var aj = app.Ajustes; aj.SaltarPerdidos = i == 2; if (i < 2) aj.UnoPorUno = i == 0; aj.Guardar(); panelSync.Invalidate(); };
+            panelSync.Controls.Add(segPrimera);
             panelSync.Paint += (s, e) =>
             {
                 var g = e.Graphics; g.Clear(Tema.Fondo); Tema.Calidad(g);
@@ -213,15 +218,30 @@ namespace LogrosBB
                 using (var f3 = Tema.F(Tema.Sans, 8.8f))
                 {
                     Tema.Escribir(g, "Conectá tus trofeos con bbport", f1, Tema.Texto, new RectangleF(r.X, r.Y + Tema.Px(30), r.Width, Tema.Px(34)), StringAlignment.Center);
-                    Tema.Escribir(g, "Vas a ver los trofeos que ya tenés, y los que te perdiste van a ir saliendo en orden, una sola vez. Después se sincroniza solo cada vez que abrís el programa.", f2, Tema.Tenue,
-                        new RectangleF(r.X + Tema.Px(48), r.Y + Tema.Px(72), r.Width - Tema.Px(96), Tema.Px(44)), StringAlignment.Center, true);
+                    Tema.Escribir(g, TextoSync, f2, Tema.Tenue,
+                        new RectangleF(r.X + Tema.Px(48), r.Y + Tema.Px(72), r.Width - Tema.Px(96), descSync), StringAlignment.Center, true);
+                    var aj = app.Ajustes;
+                    string modo = aj.SaltarPerdidos ? "Los trofeos que ya tenés entran sin avisos (solo se cuentan)"
+                                : aj.UnoPorUno ? "Los trofeos que ya tenés salen en orden, uno por uno" : "Los trofeos que ya tenés salen en un resumen";
+                    Tema.Escribir(g, modo, f3, Tema.Oro, new RectangleF(r.X, segPrimera.Top - Tema.Px(24), r.Width, Tema.Px(18)), StringAlignment.Center);
                     Tema.Escribir(g, "bbport:  " + app.Bbport + "\nJuego:  " + app.JuegoDir, f3, Color.FromArgb(120, 110, 100),
-                        new RectangleF(r.X + Tema.Px(40), r.Y + Tema.Px(196), r.Width - Tema.Px(80), Tema.Px(38)), StringAlignment.Center, true);
+                        new RectangleF(r.X + Tema.Px(40), bSync.Bottom + Tema.Px(22), r.Width - Tema.Px(80), Tema.Px(38)), StringAlignment.Center, true);
                     Tema.Escribir(g, "Solo se lee el registro de trofeos de bbport. No se tocan tus partidas.", f3, Color.FromArgb(120, 110, 100),
                         new RectangleF(r.X, r.Bottom - Tema.Px(40), r.Width, Tema.Px(20)), StringAlignment.Center);
                 }
             };
-            panelSync.Resize += delegate { var r = TarjetaSync(); bSync.Location = new Point((int)(r.X + (r.Width - bSync.Width) / 2), (int)r.Y + Tema.Px(132)); };
+            panelSync.Resize += delegate
+            {
+                // la descripción se mide: el botón y las rutas van debajo según su alto real (nada se corta)
+                float w = Math.Min(Tema.Px(600), panelSync.Width - Tema.Px(48)) - Tema.Px(96);
+                using (var g = panelSync.CreateGraphics()) using (var f2 = Tema.F(Tema.Sans, 10f))
+                    descSync = (int)Math.Ceiling(g.MeasureString(TextoSync, f2, (int)Math.Max(20, w)).Height) + Tema.Px(4);
+                var r = TarjetaSync();
+                int y0 = (int)r.Y + Tema.Px(72) + descSync + Tema.Px(16) + Tema.Px(24);
+                segPrimera.Location = new Point((int)(r.X + (r.Width - segPrimera.Width) / 2), y0);
+                bSync.Location = new Point((int)(r.X + (r.Width - bSync.Width) / 2), segPrimera.Bottom + Tema.Px(18));
+                panelSync.Invalidate();
+            };
 
             Controls.Add(panelSync);
             Controls.Add(Lista);
@@ -238,9 +258,15 @@ namespace LogrosBB
             KeyPreview = true;
         }
 
+        const string TextoSync = "Se leen los trofeos que ya conseguiste en bbport. Después se sincroniza solo, mientras el programa esté abierto, y cada trofeo nuevo sale sobre el juego.";
+        int descSync = Tema.Px(44);
+        readonly Segmentado segPrimera;
+
         RectangleF TarjetaSync()
         {
-            float w = Math.Min(Tema.Px(600), panelSync.Width - Tema.Px(48)), h = Tema.Px(300);
+            // título, descripción medida, cómo entran los que ya tenés, botón, rutas y la nota de abajo
+            float w = Math.Min(Tema.Px(600), panelSync.Width - Tema.Px(48)),
+                  h = Tema.Px(72) + descSync + Tema.Px(40) + Tema.Px(32) + Tema.Px(18) + Tema.Px(42) + Tema.Px(22) + Tema.Px(38) + Tema.Px(64);
             return new RectangleF((panelSync.Width - w) / 2, Math.Max(Tema.Px(24), (panelSync.Height - h) / 2 - Tema.Px(20)), w, h);
         }
 
@@ -310,7 +336,7 @@ namespace LogrosBB
             bActualizar.Location = new Point(pie.Width - Tema.Px(24) - bActualizar.Width, (pie.Height - bActualizar.Height) / 2);
             if (EnConfig) { Cab.Invalidate(); pie.Invalidate(); RefrescarConfig(); return; }
             panelSync.Visible = !sinc; Lista.Visible = sinc; barra.Visible = sinc;
-            if (!sinc) panelSync.BringToFront();
+            if (!sinc) { panelSync.BringToFront(); segPrimera.Seleccion = app.Ajustes.SaltarPerdidos ? 2 : app.Ajustes.UnoPorUno ? 0 : 1; panelSync.Invalidate(); }
             int ob = j.Obtenidos, tot = j.Trofeos.Count;
             tabs.Items.Clear();
             tabs.Items.Add(new[] { "todos", "Todos", tot.ToString() });

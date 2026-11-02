@@ -27,7 +27,7 @@ namespace LogrosBB
 
         static string Carpeta
         {
-            get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "LogrosBloodborne"); }
+            get { return Edicion.CarpetaDatos; }
         }
         static string Archivo { get { return Path.Combine(Carpeta, "ajustes.ini"); } }
 

@@ -256,7 +256,9 @@ namespace LogrosBB
                 {
                     var st = g.Save();
                     g.SetClip(p);
-                    using (var lg = new LinearGradientBrush(r, Color.FromArgb(22, cg), Color.FromArgb(0, cg), 0f)) g.FillRectangle(lg, r.X, r.Y, r.Width * .45f, r.Height);
+                    // el degradé termina en transparente justo donde termina la franja: sin corte visible
+                    var franja = new RectangleF(r.X, r.Y, r.Width * .45f, r.Height);
+                    using (var lg = new LinearGradientBrush(new RectangleF(franja.X - 1, franja.Y, franja.Width + 2, franja.Height), Color.FromArgb(22, cg), Color.FromArgb(0, cg), 0f)) g.FillRectangle(lg, franja);
                     using (var br = new SolidBrush(cg)) g.FillRectangle(br, r.X, r.Y, Tema.Px(3), r.Height);
                     g.Restore(st);
                 }

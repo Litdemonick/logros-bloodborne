@@ -13,7 +13,7 @@ namespace LogrosBB
 
         static string Archivo
         {
-            get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "LogrosBloodborne", "tiempo.txt"); }
+            get { return Path.Combine(Edicion.CarpetaDatos, "tiempo.txt"); }
         }
 
         static void Cargar()

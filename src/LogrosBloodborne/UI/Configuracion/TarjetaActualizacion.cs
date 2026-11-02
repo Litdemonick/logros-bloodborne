@@ -111,14 +111,16 @@ namespace LogrosBB
                 default: titulo = "Actualizaciones"; desc = "Tenés la versión " + v + ". Nunca se instala nada sin que lo confirmes."; break;
             }
             float tx = ri.Right + Tema.Px(16);
-            // el texto siempre tiene el mismo ancho (el de los dos botones), aunque haya uno solo
-            float tw = b2.Left - Tema.Px(16) - tx;
+            // el texto usa todo el lugar libre hasta los botones visibles (ícono, título y botones no se mueven)
+            float tw = (b2.Visible ? b2.Left : b1.Left) - Tema.Px(28) - tx;
             using (var f1 = Tema.F(Tema.SansSemi, 10.3f, FontStyle.Bold))
             using (var f2 = Tema.F(Tema.Sans, 8.8f))
             {
-                float ty = Height / 2f - Tema.Px(26);
+                // la descripción se mide: título y texto quedan centrados en la tarjeta, sin cortarse
+                float descH = Math.Min(g.MeasureString(desc, f2, (int)Math.Max(20, tw)).Height + Tema.Px(2), Height - Tema.Px(40));
+                float ty = (Height - Tema.Px(22) - descH) / 2f;
                 Tema.Escribir(g, titulo, f1, destacar ? Tema.Oro : Tema.Texto, new RectangleF(tx, ty, tw, Tema.Px(20)));
-                Tema.Escribir(g, desc, f2, app.Act == App.EstadoAct.Error ? Color.FromArgb(222, 120, 112) : Tema.Tenue, new RectangleF(tx, ty + Tema.Px(22), tw, Tema.Px(34)), StringAlignment.Near, true);
+                Tema.Escribir(g, desc, f2, app.Act == App.EstadoAct.Error ? Color.FromArgb(222, 120, 112) : Tema.Tenue, new RectangleF(tx, ty + Tema.Px(22), tw, descH), StringAlignment.Near, true);
             }
         }
 
