@@ -122,7 +122,7 @@ Abrí un [issue](https://github.com/Litdemonick/logros-bloodborne/issues) y adju
 
 ## Actualizar y desinstalar
 
-- **Actualizar:** el programa avisa cuando hay versión nueva. En **Configuración → Acerca de** ves cuál es y tocás **Instalar**; después de confirmar, se cierra, se actualiza en el lugar y se vuelve a abrir, conservando tus ajustes y trofeos. Nunca se instala nada sin que lo confirmes. También podés instalar la release nueva encima.
+- **Actualizar:** el programa avisa cuando hay versión nueva. En **Configuración → Acerca de** ves cuál es y tocás **Instalar**; después de confirmar, se abre el instalador y el programa se cierra. Al terminar, el instalador ofrece abrirlo de nuevo. Tus ajustes y trofeos se conservan. Nunca se instala nada sin que lo confirmes. También podés instalar la release nueva encima.
 - **Desinstalar:** desde *Configuración de Windows → Aplicaciones*. Se quitan el programa, el inicio automático y los ajustes. Se conservan tus respaldos de trofeos en `%APPDATA%\LogrosBloodborne\respaldos`.
 
 ## Compilar desde el código

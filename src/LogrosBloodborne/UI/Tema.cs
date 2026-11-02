@@ -36,6 +36,15 @@ namespace LogrosBB
         public static float S = 1f;
         public static int Px(float v) { return (int)Math.Round(v * S); }
 
+        // Letras medidas con la MISMA escala que el resto del diseño (en píxeles, no en puntos): así el
+        // texto y sus cajas crecen juntos en cualquier escala de Windows, monitor o tele, y nada se sale.
+        public static Font F(FontFamily fam, float puntos, FontStyle estilo = FontStyle.Regular)
+        {
+            if (!fam.IsStyleAvailable(estilo))
+                estilo = fam.IsStyleAvailable(FontStyle.Regular) ? FontStyle.Regular : FontStyle.Bold;
+            return new Font(fam, Math.Max(1f, puntos * S * 96f / 72f), estilo, GraphicsUnit.Pixel);
+        }
+
         public static string Fuente(params string[] nombres)
         {
             using (var fc = new InstalledFontCollection())
@@ -118,6 +127,32 @@ namespace LogrosBB
                 sf.Trimming = StringTrimming.EllipsisWord;
                 if (!envolver) sf.FormatFlags = StringFormatFlags.NoWrap;
                 g.DrawString(s, f, br, r, sf);
+            }
+        }
+
+        // Engranaje dibujado (botón de Configuración): se ve igual en cualquier PC, sin depender de fuentes
+        public static void Engranaje(Graphics g, RectangleF r, Color c)
+        {
+            float cx = r.X + r.Width / 2, cy = r.Y + r.Height / 2, R = Math.Min(r.Width, r.Height) / 2;
+            float ext = R, intr = R * .74f, hueco = R * .32f;
+            int dientes = 8;
+            var pts = new System.Collections.Generic.List<PointF>();
+            for (int i = 0; i < dientes; i++)
+            {
+                double a0 = Math.PI * 2 * i / dientes;
+                double paso = Math.PI * 2 / dientes;
+                foreach (var x in new[] { new[] { -.5, intr }, new[] { -.3, ext }, new[] { .05, ext }, new[] { .25, intr } })
+                {
+                    double a = a0 + paso * x[0];
+                    pts.Add(new PointF(cx + (float)(Math.Cos(a) * x[1]), cy + (float)(Math.Sin(a) * x[1])));
+                }
+            }
+            using (var gp = new GraphicsPath())
+            {
+                gp.AddPolygon(pts.ToArray());
+                gp.AddEllipse(cx - hueco, cy - hueco, hueco * 2, hueco * 2);
+                gp.FillMode = FillMode.Alternate;
+                using (var br = new SolidBrush(c)) g.FillPath(br, gp);
             }
         }
 

@@ -91,8 +91,8 @@ namespace LogrosBB
         protected override void OnPaint(PaintEventArgs e)
         {
             var g = e.Graphics; g.Clear(Tema.Fondo); Tema.Calidad(g);
-            using (var f1 = new Font(Tema.Serif, 16f, FontStyle.Bold))
-            using (var f2 = new Font(Tema.Sans, 9.8f))
+            using (var f1 = Tema.F(Tema.Serif, 16f, FontStyle.Bold))
+            using (var f2 = Tema.F(Tema.Sans, 9.8f))
             {
                 Tema.Escribir(g, titulo, f1, Tema.Texto, new RectangleF(0, Tema.Px(28), ClientSize.Width, Tema.Px(34)), StringAlignment.Center);
                 Tema.Escribir(g, explica, f2, Tema.Tenue, new RectangleF(Tema.Px(36), Tema.Px(70), ClientSize.Width - Tema.Px(72), Tema.Px(64)), StringAlignment.Center, true);
@@ -101,7 +101,7 @@ namespace LogrosBB
                 using (var p = Tema.Redondo(panel, Tema.Px(8)))
                 using (var br = new SolidBrush(Tema.Panel))
                 using (var pen = new Pen(Tema.Borde)) { g.FillPath(br, p); g.DrawPath(pen, p); }
-                using (var f3 = new Font(Tema.Sans, 9.4f))
+                using (var f3 = Tema.F(Tema.Sans, 9.4f))
                 {
                     float y0 = panel.Y + (panel.Height - ejemplo.Length * Tema.Px(22)) / 2f;
                     for (int i = 0; i < ejemplo.Length; i++)

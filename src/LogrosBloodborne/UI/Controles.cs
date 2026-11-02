@@ -16,7 +16,7 @@ namespace LogrosBB
         {
             SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.ResizeRedraw, true);
             SetStyle(ControlStyles.StandardDoubleClick, false); // dos clics rápidos = dos clics, ninguno se pierde
-            Font = new Font(Tema.SansSemi, 9.5f, FontStyle.Bold);
+            Font = Tema.F(Tema.SansSemi, 9.5f, FontStyle.Bold);
         }
         protected override void OnMouseEnter(EventArgs e) { Sobre = true; Invalidate(); base.OnMouseEnter(e); }
         protected override void OnMouseLeave(EventArgs e) { Sobre = false; Apretado = false; Invalidate(); base.OnMouseLeave(e); }
@@ -28,6 +28,16 @@ namespace LogrosBB
     class Boton : Pintado
     {
         public bool Primario;
+        public Action<Graphics, RectangleF, Color> Dibujo;   // si está, se dibuja este ícono en vez del texto
+        DateTime ultimoClic;
+
+        // tocar varias veces seguidas no repite la acción ni hace parpadear nada
+        protected override void OnClick(EventArgs e)
+        {
+            if ((DateTime.Now - ultimoClic).TotalMilliseconds < 350) return;
+            ultimoClic = DateTime.Now;
+            base.OnClick(e);
+        }
 
         public Boton(string texto) { Text = texto; Cursor = Cursors.Hand; Size = new Size(Tema.Px(110), Tema.Px(34)); }
 
@@ -62,7 +72,12 @@ namespace LogrosBB
             using (var pen = new Pen(borde, 1)) { g.FillPath(br, p); g.DrawPath(pen, p); }
             if (Primario && Enabled)
                 using (var pen = new Pen(Color.FromArgb(40, 255, 255, 255), 1)) g.DrawLine(pen, r.X + Tema.Px(6), r.Y + 1, r.Right - Tema.Px(6), r.Y + 1);
-            Tema.Escribir(g, Text, Font, texto, r, StringAlignment.Center, false, StringAlignment.Center);
+            if (Dibujo != null)
+            {
+                float lado = Math.Min(r.Width, r.Height) * .5f;
+                Dibujo(g, new RectangleF(r.X + (r.Width - lado) / 2, r.Y + (r.Height - lado) / 2, lado, lado), Sobre && Enabled ? Tema.Oro : texto);
+            }
+            else Tema.Escribir(g, Text, Font, texto, r, StringAlignment.Center, false, StringAlignment.Center);
         }
     }
 
@@ -72,28 +87,30 @@ namespace LogrosBB
         public readonly List<string[]> Items = new List<string[]>(); // clave, texto, contador
         public string Sel;
         public int AnchoFijo;   // si > 0, todas las pestañas miden lo mismo: el diseño no se mueve
+        public bool Marco;      // dentro de un marco redondeado, con la elegida resaltada
         public event Action<string> Cambio;
         int sobreI = -1;
         readonly List<RectangleF> zonas = new List<RectangleF>();
 
-        public Pestanas() { Cursor = Cursors.Hand; Font = new Font(Tema.SansSemi, 10f, FontStyle.Bold); }
+        public Pestanas() { Cursor = Cursors.Hand; Font = Tema.F(Tema.SansSemi, 10f, FontStyle.Bold); }
 
         void Medir(Graphics g)
         {
             zonas.Clear();
-            float x = 0;
-            using (var fc = new Font(Tema.Sans, 9.5f))
+            float x = Marco ? Tema.Px(4) : 0;
+            float zy = Marco ? Tema.Px(11) : 0, zh = Marco ? Height - Tema.Px(22) : Height;
+            using (var fc = Tema.F(Tema.Sans, 9.5f))
                 foreach (var it in Items)
                 {
                     float w = AnchoFijo > 0 ? Tema.Px(AnchoFijo) : g.MeasureString(it[1], Font).Width + (it[2] != "" ? g.MeasureString(it[2], fc).Width + Tema.Px(2) : 0) + Tema.Px(10);
-                    zonas.Add(new RectangleF(x, 0, w, Height));
-                    x += w + (AnchoFijo > 0 ? 0 : Tema.Px(18));
+                    zonas.Add(new RectangleF(x, zy, w, zh));
+                    x += w + (AnchoFijo > 0 || Marco ? (Marco ? Tema.Px(2) : 0) : Tema.Px(18));
                 }
         }
 
         public int AnchoTotal()
         {
-            using (var g = CreateGraphics()) { Medir(g); return zonas.Count == 0 ? 0 : (int)zonas[zonas.Count - 1].Right + 2; }
+            using (var g = CreateGraphics()) { Medir(g); return zonas.Count == 0 ? 0 : (int)zonas[zonas.Count - 1].Right + (Marco ? Tema.Px(5) : 2); }
         }
 
         protected override void OnMouseMove(MouseEventArgs e)
@@ -120,20 +137,31 @@ namespace LogrosBB
             g.Clear(Detras);
             Tema.Calidad(g);
             Medir(g);
-            using (var fc = new Font(Tema.Sans, 9.5f))
+            if (Marco && zonas.Count > 0)
+            {
+                var caja = new RectangleF(.5f, Tema.Px(7) + .5f, zonas[zonas.Count - 1].Right + Tema.Px(4), Height - Tema.Px(14) - 1);
+                using (var p = Tema.Redondo(caja, Tema.Px(9)))
+                using (var br = new SolidBrush(Tema.Panel)) using (var pen = new Pen(Tema.Borde)) { g.FillPath(br, p); g.DrawPath(pen, p); }
+            }
+            using (var fc = Tema.F(Tema.Sans, 9.5f))
                 for (int i = 0; i < Items.Count; i++)
                 {
                     var z = zonas[i];
                     bool act = Items[i][0] == Sel;
+                    if (Marco && (act || i == sobreI))
+                        using (var p = Tema.Redondo(z, Tema.Px(7)))
+                        using (var br = new SolidBrush(act ? Tema.PanelAlto : Color.FromArgb(28, 22, 25)))
+                        using (var pen = new Pen(act ? Color.FromArgb(150, Tema.Oro) : Tema.Borde)) { g.FillPath(br, p); g.DrawPath(pen, p); }
                     Color c = act ? Tema.Texto : (i == sobreI ? Color.FromArgb(205, 196, 182) : Tema.Tenue);
                     float tw = g.MeasureString(Items[i][1], Font).Width;
                     float cw = Items[i][2] != "" ? g.MeasureString(Items[i][2], fc).Width : 0;
                     float x0 = AnchoFijo > 0 ? z.X + (z.Width - tw - cw - (cw > 0 ? Tema.Px(5) : 0)) / 2 : z.X;
-                    Tema.Escribir(g, Items[i][1], Font, c, new RectangleF(x0, 0, tw + 4, Height - Tema.Px(6)), StringAlignment.Near, false, StringAlignment.Center);
+                    float ty = Marco ? z.Y : 0, th = Marco ? z.Height : Height - Tema.Px(6);
+                    Tema.Escribir(g, Items[i][1], Font, c, new RectangleF(x0, ty, tw + 4, th), StringAlignment.Near, false, StringAlignment.Center);
                     if (Items[i][2] != "")
-                        Tema.Escribir(g, Items[i][2], fc, act ? Tema.Oro : Color.FromArgb(120, 110, 100), new RectangleF(x0 + tw + Tema.Px(5), 0, cw + 4, Height - Tema.Px(6)), StringAlignment.Near, false, StringAlignment.Center);
+                        Tema.Escribir(g, Items[i][2], fc, act ? Tema.Oro : Color.FromArgb(120, 110, 100), new RectangleF(x0 + tw + Tema.Px(5), ty, cw + 4, th), StringAlignment.Near, false, StringAlignment.Center);
                     float ux = AnchoFijo > 0 ? z.X + Tema.Px(10) : z.X, uw = AnchoFijo > 0 ? z.Width - Tema.Px(20) : z.Width - Tema.Px(6);
-                    if (act) using (var br = new SolidBrush(Tema.Oro)) g.FillRectangle(br, ux, Height - Tema.Px(3), uw, Tema.Px(2));
+                    if (act && !Marco) using (var br = new SolidBrush(Tema.Oro)) g.FillRectangle(br, ux, Height - Tema.Px(3), uw, Tema.Px(2));
                 }
         }
     }
@@ -228,7 +256,7 @@ namespace LogrosBB
             using (var br = new SolidBrush(Color.FromArgb(80, 0, 0, 0))) g.FillEllipse(br, cx - d / 2, Height / 2f - d / 2 + 1.5f, d, d);
             using (var br = new SolidBrush(Color.FromArgb(246, 236, 220))) g.FillEllipse(br, cx - d / 2, Height / 2f - d / 2, d, d);
             using (var pen = new Pen(Tema.Oro, Tema.Px(2))) g.DrawEllipse(pen, cx - d / 2, Height / 2f - d / 2, d, d);
-            using (var f = new Font(Tema.SansSemi, 9.5f, FontStyle.Bold))
+            using (var f = Tema.F(Tema.SansSemi, 9.5f, FontStyle.Bold))
                 Tema.Escribir(g, Formato(val), f, Tema.Texto, new RectangleF(p.Right + Tema.Px(10), 0, Width - p.Right - Tema.Px(10), Height), StringAlignment.Far, false, StringAlignment.Center);
         }
     }
@@ -241,7 +269,7 @@ namespace LogrosBB
         public event Action<int> Cambio;
         public int Seleccion { get { return sel; } set { sel = value; Invalidate(); } }
 
-        public Segmentado() { Size = new Size(Tema.Px(250), Tema.Px(32)); Cursor = Cursors.Hand; Font = new Font(Tema.SansSemi, 9f, FontStyle.Bold); }
+        public Segmentado() { Size = new Size(Tema.Px(250), Tema.Px(32)); Cursor = Cursors.Hand; Font = Tema.F(Tema.SansSemi, 9f, FontStyle.Bold); }
 
         int Indice(int x) { return Opciones.Length == 0 ? -1 : Math.Max(0, Math.Min(Opciones.Length - 1, x * Opciones.Length / Math.Max(1, Width))); }
         protected override void OnMouseMove(MouseEventArgs e) { base.OnMouseMove(e); int s = Indice(e.X); if (s != sobreI) { sobreI = s; Invalidate(); } }

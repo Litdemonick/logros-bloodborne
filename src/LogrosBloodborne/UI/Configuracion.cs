@@ -27,7 +27,7 @@ namespace LogrosBB
             cab.Paint += (s, e) =>
             {
                 var g = e.Graphics; g.Clear(Tema.Fondo); Tema.Calidad(g);
-                using (var f = new Font(Tema.Serif, 15f, FontStyle.Bold))
+                using (var f = Tema.F(Tema.Serif, 15f, FontStyle.Bold))
                     Tema.Escribir(g, "CONFIGURACIÓN", f, Tema.Texto, new RectangleF(0, Tema.Px(12), cab.Width, Tema.Px(34)), StringAlignment.Center, false, StringAlignment.Center);
                 using (var pen = new Pen(Tema.Borde)) g.DrawLine(pen, Tema.Px(24), cab.Height - 1, cab.Width - Tema.Px(24), cab.Height - 1);
             };
@@ -105,20 +105,28 @@ namespace LogrosBB
         void Fila(string titulo, string desc, Control ctl, int alto = 76)
         {
             int m = Tema.Px(24);
-            var fila = new Pintado { Location = new Point(0, y), Size = new Size(cuerpo.ClientSize.Width, Tema.Px(alto)) };
+            float twM = cuerpo.ClientSize.Width - m * 2 - (ctl != null ? ctl.Width + Tema.Px(28) : 0);
+            float descH = 0;
+            if (!string.IsNullOrEmpty(desc))
+                using (var gm = cuerpo.CreateGraphics())
+                using (var f2m = Tema.F(Tema.Sans, 8.8f))
+                    descH = gm.MeasureString(desc, f2m, (int)Math.Max(20, twM)).Height + Tema.Px(2);
+            int altoFila = Math.Max(Tema.Px(alto), (int)(Tema.Px(21) + descH + Tema.Px(32)));
+            var fila = new Pintado { Location = new Point(0, y), Size = new Size(cuerpo.ClientSize.Width, altoFila) };
             fila.Paint += (s, e) =>
             {
                 var g = e.Graphics; g.Clear(Tema.Fondo); Tema.Calidad(g);
                 var r = new RectangleF(.5f, .5f, fila.Width - 1.5f, fila.Height - 1.5f);
                 using (var p = Tema.Redondo(r, Tema.Px(8))) using (var br = new SolidBrush(Tema.Panel)) using (var pen = new Pen(Tema.Borde)) { g.FillPath(br, p); g.DrawPath(pen, p); }
                 float tw = fila.Width - m * 2 - (ctl != null ? ctl.Width + Tema.Px(28) : 0);
-                using (var f1 = new Font(Tema.SansSemi, 10.3f, FontStyle.Bold))
-                using (var f2 = new Font(Tema.Sans, 8.8f))
+                using (var f1 = Tema.F(Tema.SansSemi, 10.3f, FontStyle.Bold))
+                using (var f2 = Tema.F(Tema.Sans, 8.8f))
                 {
                     bool conDesc = !string.IsNullOrEmpty(desc);
-                    float ty = conDesc ? fila.Height / 2f - Tema.Px(19) : fila.Height / 2f - Tema.Px(10);
+                    float bloque = Tema.Px(20) + (conDesc ? Tema.Px(1) + descH : 0);
+                    float ty = (fila.Height - bloque) / 2f;
                     Tema.Escribir(g, titulo, f1, Tema.Texto, new RectangleF(m, ty, tw, Tema.Px(20)));
-                    if (conDesc) Tema.Escribir(g, desc, f2, Tema.Tenue, new RectangleF(m, ty + Tema.Px(21), tw, Tema.Px(30)), StringAlignment.Near, true);
+                    if (conDesc) Tema.Escribir(g, desc, f2, Tema.Tenue, new RectangleF(m, ty + Tema.Px(21), tw, descH + Tema.Px(2)), StringAlignment.Near, true);
                 }
             };
             if (ctl != null)
@@ -147,6 +155,26 @@ namespace LogrosBB
             foreach (var c in ctls) { c.Location = new Point(x, 0); p.Controls.Add(c); x += c.Width + Tema.Px(8); h = Math.Max(h, c.Height); }
             p.Size = new Size(x - Tema.Px(8), h);
             return p;
+        }
+
+        // Acción que se confirma tocando dos veces el mismo botón (sin ventanas aparte)
+        Boton Confirmar(string texto, Action al, int min)
+        {
+            Boton b = null;
+            b = Btn(texto, () =>
+            {
+                if (b.Text != "¿Seguro?")
+                {
+                    b.Text = "¿Seguro?";
+                    var t = new Timer { Interval = 4000 };
+                    t.Tick += delegate { t.Stop(); t.Dispose(); if (!b.IsDisposed) b.Text = texto; };
+                    t.Start();
+                    return;
+                }
+                b.Text = texto;
+                al();
+            }, min);
+            return b;
         }
 
         void Agregar(Control c)
@@ -190,8 +218,13 @@ namespace LogrosBB
             return b;
         }
 
+        [System.Runtime.InteropServices.DllImport("user32.dll")] static extern IntPtr SendMessage(IntPtr h, int msg, IntPtr w, IntPtr l);
+
         void Armar()
         {
+            // se rearma tapado (sin redibujar a medias): cambiar de pestaña o tocar botones no parpadea
+            bool tapar = cuerpo.IsHandleCreated;
+            if (tapar) SendMessage(cuerpo.Handle, 0x000B, IntPtr.Zero, IntPtr.Zero);
             cuerpo.SuspendLayout();
             foreach (Control c in cuerpo.Controls.Cast<Control>().ToList()) c.Dispose();
             cuerpo.Controls.Clear();
@@ -239,14 +272,14 @@ namespace LogrosBB
                         aj.Sincronizado ? app.Juego.Obtenidos + " de " + app.Juego.Trofeos.Count + " trofeos · se sincroniza solo al abrir el programa." : "Tocá el botón para traer tus trofeos de bbport.",
                         Btn(aj.Sincronizado ? "Sincronizar ahora" : "Sincronizar", () => { app.SincronizarAhora(); Armar(); }, 160));
                     if (aj.Sincronizado)
-                        Fila("Rehacer desde cero", "Vuelve a mostrar todos tus trofeos en orden.",
-                            Btn("Rehacer desde cero", () =>
-                            {
-                                if (MessageBox.Show("Se van a volver a mostrar todos tus trofeos, uno por uno y en orden.\n¿Seguimos?", "Logros Bloodborne", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
-                                    app.PrimeraSincronizacion();
-                            }, 160));
+                        Fila("Rehacer desde cero", "Vuelve a leer todos tus trofeos de bbport. Elegí si querés ver los avisos de nuevo o solo recontar.",
+                            Grupo(Confirmar("Ver avisos", () => app.PrimeraSincronizacion(true), 112),
+                                  Confirmar("Sin avisos", () => app.PrimeraSincronizacion(false), 112)));
+                    Fila("Avisos en espera", "Si hay muchos trofeos esperando para salir, cancelalos: quedan como vistos.",
+                        Btn("Cancelar avisos", () => app.CancelarAvisos(), 160));
                     Fila("Trofeos que te perdiste", "Ganados con el programa cerrado o los avisos apagados.",
-                        Seg(new[] { "Uno por uno", "Resumen" }, aj.UnoPorUno ? 0 : 1, i => { aj.UnoPorUno = i == 0; aj.Guardar(); }));
+                        Seg(new[] { "Uno por uno", "Resumen", "No mostrar" }, aj.SaltarPerdidos ? 2 : aj.UnoPorUno ? 0 : 1,
+                            i => { aj.SaltarPerdidos = i == 2; if (i < 2) aj.UnoPorUno = i == 0; aj.Guardar(); }));
                     Fila("Respaldo", "Guardá tus trofeos en un archivo o sumá los de otra instalación.",
                         Grupo(Btn("Exportar…", () => app.Exportar(), 120), Btn("Importar…", () => app.Importar(), 120)));
                     Fila("Carpeta de bbport", app.Bbport, Btn("Cambiar…", () => app.CambiarCarpeta(), 120));
@@ -284,9 +317,14 @@ namespace LogrosBB
                     Fila("Tus datos", "Solo se lee el registro de trofeos de bbport; no se tocan tus partidas ni los archivos del juego.", null);
                     break;
             }
+            // al final de cada pestaña: volver esa zona a los valores de fábrica (se confirma en el mismo botón)
+            string sec = tabs.Sel;
+            Fila("Valores de fábrica", "Vuelve solo esta sección a como venía (tocá dos veces). No toca tus trofeos ni la carpeta de bbport.",
+                Confirmar("Restablecer", () => app.RestablecerSeccion(sec), 140));
             alto = y + Tema.Px(4);
             cuerpo.ResumeLayout();
             Ubicar();
+            if (tapar) { SendMessage(cuerpo.Handle, 0x000B, (IntPtr)1, IntPtr.Zero); cuerpo.Invalidate(true); }
         }
     }
 }

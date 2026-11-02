@@ -26,7 +26,7 @@ namespace LogrosBB
         public string Bbport, JuegoDir, UserDir;
         public bool JuegoAbierto;            // algún proceso de bbport (launcher o juego)
         public bool EnJuego;                 // la ventana del juego (SDL) está abierta
-        public DateTime? SesionDesde;        // inicio de la sesión de juego actual
+        public DateTime? SesionDesde;        // inicio de la sesión de juego actual (desde que el programa la vio)
         readonly bool mostrarAlInicio;
         bool avisoBandejaMostrado;
         readonly NotifyIcon bandeja = new NotifyIcon();
@@ -35,9 +35,44 @@ namespace LogrosBB
         readonly Dictionary<int, DateTime> conocidos = new Dictionary<int, DateTime>();
         readonly HashSet<int> vistos = new HashSet<int>();
         DateTime ultimoLog = DateTime.MinValue; long largoLog = -1;
+        bool logLeible = true;               // el último intento de leer trophies.log salió bien
+
+        // Estado de la conexión con los trofeos de bbport, para mostrar junto al "EN VIVO"
+        public string EstadoSync(out bool ok)
+        {
+            ok = false;
+            if (!Ajustes.Sincronizado) return "sin sincronizar";
+            if (!logLeible) return "sin acceso a bbport";
+            ok = true;
+            return "sync activo";
+        }
         int encogido;                        // lecturas seguidas con menos trofeos (anti-lectura a medias)
         int ticks;
-        int pidJuego; DateTime inicioProceso; DateTime? finVentana;
+        int pidJuego; DateTime? finVentana;
+        // tiempo de juego medido por el programa: solo lo que realmente vio, de a pocos segundos
+        long claveTramo = -1;                // tramo actual (un proceso del juego)
+        double segTramo, segVivo;            // segundos del tramo y de la sesión "en vivo"
+        DateTime ultimaMarca;
+        const double SaltoMaximo = 15;       // un hueco más largo (PC suspendida, trabada) no se cuenta
+
+        void Medir()
+        {
+            var ahora = DateTime.Now;
+            double d = (ahora - ultimaMarca).TotalSeconds;
+            if (d > 0 && d <= SaltoMaximo) { segTramo += d; segVivo += d; }
+            ultimaMarca = ahora;
+        }
+
+        public TimeSpan SesionTiempo
+        {
+            get
+            {
+                double extra = EnJuego ? Math.Max(0, Math.Min(SaltoMaximo, (DateTime.Now - ultimaMarca).TotalSeconds)) : 0;
+                return TimeSpan.FromSeconds(segVivo + extra);
+            }
+        }
+
+        public TimeSpan TiempoTotal { get { return Tiempo.Total(claveTramo, segTramo); } }
         ContextMenuStrip menu;
         Atajos atajos;
 
@@ -52,6 +87,7 @@ namespace LogrosBB
             Ajustes = Ajustes.Cargar();
             Aviso.Ajustes = Ajustes;
             Aviso.ZonaJuego = ZonaJuego;
+            Aviso.ZonaApp = ZonaApp;
             Aviso.JuegoAlFrente = JuegoAlFrente;
             Fecha.Formato = Ajustes.Hora;
 
@@ -248,13 +284,26 @@ namespace LogrosBB
         }
 
         // Lee trophies.log (solo lectura, compartido: nunca bloquea ni toca a bbport) y anuncia lo nuevo.
-        public void Sincronizar(bool inicio, bool forzar = false)
+        bool forzarAvisos;
+        int fallosLog;
+
+        // Cancela los avisos que esperan para salir: quedan como vistos y no vuelven a aparecer
+        public void CancelarAvisos()
+        {
+            Aviso.CancelarCola();
+            if (Juego != null) { vistos.UnionWith(Juego.Trofeos.Where(t => t.Obtenido != null).Select(t => t.Id)); GuardarVistos(); }
+            ActualizarPendientes();
+            RefrescarVentana();
+        }
+
+        public void Sincronizar(bool inicio, bool forzar = false, bool silencioso = false)
         {
             string log = Path.Combine(UserDir, "trophies.log");
             var fi = new FileInfo(log);
             if (!inicio && !forzar && fi.Exists && fi.LastWriteTimeUtc == ultimoLog && fi.Length == largoLog) return;
             var actual = Datos.LeerLog(log);
-            if (actual == null) return; // no se pudo leer: reintenta en el próximo segundo
+            if (actual == null) { if (++fallosLog >= 5) logLeible = false; return; } // reintenta en el próximo segundo
+            fallosLog = 0; logLeible = true;
 
             // Si de golpe hay menos trofeos (bbport reescribiendo el archivo, o se cambió de partida),
             // se espera a que se repita 3 veces seguidas antes de aceptarlo.
@@ -282,6 +331,12 @@ namespace LogrosBB
             }
 
             vistos.IntersectWith(conocidos.Keys); // si bbport los borró (otra partida), se olvidan
+            if (silencioso)
+            {
+                // recontar sin avisos: todo lo que hay queda como visto
+                vistos.UnionWith(conocidos.Keys); GuardarVistos(); ActualizarPendientes();
+                return;
+            }
             if (!Ajustes.Avisos)
             {
                 // notificaciones apagadas: los nuevos quedan pendientes y salen cuando se vuelvan a activar
@@ -294,6 +349,13 @@ namespace LogrosBB
             if (nuevos.Count > 0)
             {
                 bool perdidos = nuevos.All(t => (DateTime.Now - t.Obtenido.Value).TotalMinutes > 2);
+                if (perdidos && Ajustes.SaltarPerdidos && !forzarAvisos)
+                {
+                    // el jugador eligió no ver los perdidos: quedan como vistos, sin avisos
+                    vistos.UnionWith(nuevos.Select(t => t.Id)); GuardarVistos(); ActualizarPendientes();
+                    if (ventana != null && ventana.Visible) ventana.Refrescar();
+                    return;
+                }
                 int baseCuenta = Juego.Obtenidos - nuevos.Count;
                 if (perdidos && !Ajustes.UnoPorUno && nuevos.Count > 3)
                 {
@@ -430,7 +492,7 @@ namespace LogrosBB
         {
             HashSet<int> pids;
             lock (pidsBbport) pids = new HashSet<int>(pidsBbport);
-            Rectangle mejor = Rectangle.Empty; int pidM = 0; long area = -1; bool sdl = false;
+            Rectangle mejor = Rectangle.Empty; int pidM = 0; long area = -1; bool sdl = false; IntPtr hM = IntPtr.Zero;
             if (pids.Count > 0)
                 EnumWindows((h, l) =>
                 {
@@ -447,13 +509,15 @@ namespace LogrosBB
                     if (IsIconic(h)) ar = 1; // minimizado: sigue siendo el juego, pero sin zona útil
                     if ((esSdl && !sdl) || (esSdl == sdl && ar > area))
                     {
-                        sdl = esSdl; area = ar; pidM = pid;
+                        sdl = esSdl; area = ar; pidM = pid; hM = h;
                         mejor = IsIconic(h) ? Rectangle.Empty : Rectangle.FromLTRB(r.L, r.T, r.R, r.B);
                     }
                     return true;
                 }, IntPtr.Zero);
             zona = mejor; pidV = pidM;
-            return pidM != 0 && (sdl || area > 300 * 200);
+            bool es = pidM != 0 && (sdl || area > 300 * 200);
+            hJuego = es ? hM : IntPtr.Zero;
+            return es;
         }
 
         [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
@@ -470,11 +534,33 @@ namespace LogrosBB
             return cn.ToString().StartsWith("SDL");
         }
 
+        // La ventana del juego se busca cada 3 s (Revisar); el aviso pide la zona en cada movimiento,
+        // así que acá solo se lee el rectángulo de esa ventana ya conocida: no traba la animación.
+        IntPtr hJuego;
+        [DllImport("user32.dll")] static extern bool IsWindow(IntPtr h);
+
         Rectangle? ZonaJuego()
         {
-            Rectangle z; int pid;
-            if (!VentanaJuego(out z, out pid) || z.Width < 200 || z.Height < 150) return null;
-            return z;
+            if (hJuego != IntPtr.Zero && IsWindow(hJuego) && IsWindowVisible(hJuego) && !IsIconic(hJuego))
+            {
+                RECT r;
+                if (DwmGetWindowAttribute(hJuego, 9, out r, Marshal.SizeOf(typeof(RECT))) != 0) GetWindowRect(hJuego, out r);
+                var z = Rectangle.FromLTRB(r.L, r.T, r.R, r.B);
+                if (z.Width >= 200 && z.Height >= 150) return z;
+            }
+            return null;
+        }
+
+        // Área de la ventana del programa, para las vistas previas (misma posición relativa que en el juego)
+        Rectangle? ZonaApp(bool alFrente)
+        {
+            try
+            {
+                if (ventana == null || !ventana.Visible || ventana.WindowState == FormWindowState.Minimized) return null;
+                if (alFrente && !ventana.ContainsFocus && Form.ActiveForm != ventana) return null;
+                return ventana.RectangleToScreen(ventana.ClientRectangle);
+            }
+            catch { return null; }
         }
 
         // ------------------------------------------------------------ reloj principal
@@ -485,7 +571,7 @@ namespace LogrosBB
             if (Ajustes.Sincronizado) try { Sincronizar(false); } catch { }
             if (ticks % 3 == 0 || ticks == 1) Revisar();
             if (ticks % 15 == 0 && SinNombres) try { RevisarClave(); } catch { }
-            if (EnJuego && ticks % 30 == 0) Tiempo.Registrar(inicioProceso, DateTime.Now);
+            if (EnJuego && ticks % 30 == 0) Tiempo.Registrar(claveTramo, segTramo);
             if (ventana != null && ventana.Visible && EnJuego) ventana.Cab.Invalidate();
             // si se cambia el idioma en el launcher de bbport, los nombres de los trofeos lo siguen
             if (ticks % 10 == 0 && Ajustes.Idioma == "auto")
@@ -512,17 +598,22 @@ namespace LogrosBB
                 finVentana = null;
                 if (pid != pidJuego)
                 {
-                    if (pidJuego != 0) Tiempo.Registrar(inicioProceso, DateTime.Now);
+                    // tramo nuevo: se cuenta desde AHORA, no desde que arrancó el proceso (el juego pudo
+                    // estar abierto horas antes de que se abriera o instalara el programa)
+                    if (claveTramo >= 0) Tiempo.Registrar(claveTramo, segTramo);
                     pidJuego = pid;
-                    try { using (var p = Process.GetProcessById(pid)) inicioProceso = p.StartTime; } catch { inicioProceso = DateTime.Now; }
-                    if (!SesionDesde.HasValue) SesionDesde = inicioProceso;
+                    claveTramo = Tiempo.Clave(DateTime.Now); segTramo = 0;
+                    ultimaMarca = DateTime.Now;
+                    if (!SesionDesde.HasValue) { SesionDesde = DateTime.Now; segVivo = 0; }
                 }
+                else if (EnJuego) Medir();
+                else ultimaMarca = DateTime.Now; // volvió la ventana: el rato sin ventana no cuenta
                 EnJuego = true;
             }
             else if (pidJuego != 0)
             {
                 // el juego se reinicia solo al arrancar: se espera 20 s antes de dar la sesión por terminada
-                if (!finVentana.HasValue) { finVentana = DateTime.Now; Tiempo.Registrar(inicioProceso, DateTime.Now); }
+                if (!finVentana.HasValue) { if (EnJuego) Medir(); EnJuego = false; finVentana = DateTime.Now; Tiempo.Registrar(claveTramo, segTramo); }
                 if ((DateTime.Now - finVentana.Value).TotalSeconds > 20) TerminoSesion();
             }
             if (antes != EnJuego && ventana != null && ventana.Visible) ventana.Refrescar();
@@ -531,20 +622,33 @@ namespace LogrosBB
 
         void TerminoSesion()
         {
+            if (claveTramo >= 0) Tiempo.Registrar(claveTramo, segTramo);
             pidJuego = 0; SesionDesde = null; finVentana = null; EnJuego = false;
+            claveTramo = -1; segTramo = 0; segVivo = 0;
             if (ventana != null && ventana.Visible) ventana.Refrescar();
         }
 
         // ------------------------------------------------------------ avisos
 
         // Primera sincronización, a pedido del jugador: después se hace sola cada vez que abre el programa.
-        public void PrimeraSincronizacion()
+        // Rehacer desde cero: con avisos (salen todos en orden, una vez) o sin avisos (solo se recuenta)
+        public void PrimeraSincronizacion(bool conAvisos = true)
         {
             Ajustes.Sincronizado = true;
             Ajustes.Guardar();
+            Aviso.CancelarCola();
             vistos.Clear();
             foreach (var x in new[] { ArchivoVistos, ArchivoVistos + ".bak" }) try { if (File.Exists(x)) File.Delete(x); } catch { }
+            if (!conAvisos)
+            {
+                Sincronizar(false, true, true);
+                Mensaje("Trofeos recontados", Juego.Obtenidos + " de " + Juego.Trofeos.Count + " · sin repetir los avisos");
+                if (ventana != null && ventana.Visible) ventana.Refrescar();
+                return;
+            }
+            forzarAvisos = true;
             Sincronizar(true);
+            forzarAvisos = false;
             AvisarEspera();
             if (ventana != null && ventana.Visible) ventana.Refrescar();
         }
@@ -587,7 +691,7 @@ namespace LogrosBB
             Aviso.Mostrar(new Aviso.Pedido
             {
                 Titulo = t.Grado == 'P' ? "¡Platino obtenido!" : "Trofeo " + Datos.NombreGradoDe(t.Grado) + " obtenido" + (real ? "" : " (prueba)"),
-                Linea = t.Nombre, Pie = pie, Grado = t.Grado, Icono = t.Icono, Insignia = t.Grado, Rapido = rapido, SoloEnJuego = real,
+                Linea = t.Nombre, Pie = pie, Grado = t.Grado, Icono = t.Icono, Insignia = t.Grado, Rapido = rapido, SoloEnJuego = real, Prueba = !real,
                 Conteo = real && t.Obtenido.HasValue ? Conteo(t.Obtenido) : Conteo()
             });
 
@@ -612,13 +716,13 @@ namespace LogrosBB
         {
             if (Juego == null) return;
             if (!Ajustes.Sincronizado) { Mensaje("Todavía sin sincronizar", "Abrí la lista y tocá «Sincronizar con bbport»"); return; }
-            string ses = SesionDesde.HasValue ? "Sesión " + Tiempo.Reloj(DateTime.Now - SesionDesde.Value) + " · " : "";
+            string ses = SesionDesde.HasValue ? "Sesión " + Tiempo.Reloj(SesionTiempo) + " · " : "";
             Aviso.Mostrar(new Aviso.Pedido
             {
                 Titulo = "Tu cacería" + (EnJuego ? " · en vivo" : ""),
                 Linea = Juego.Obtenidos + " de " + Juego.Trofeos.Count + " trofeos · " + Juego.Porcentaje + "%",
                 Pie = ses + (Juego.FaltanPlatino == 0 ? "¡Platino listo!" : "Faltan " + Juego.FaltanPlatino + " para el Platino") +
-                      " · Total " + Tiempo.Largo(Tiempo.Total(EnJuego ? (DateTime?)inicioProceso : null)),
+                      " · Total " + Tiempo.Largo(TiempoTotal),
                 Grado = 'R', Icono = Juego.IconoJuego, Sonar = false, Resumen = true, SoloEnJuego = false, Conteo = Conteo()
             });
         }
@@ -697,6 +801,42 @@ namespace LogrosBB
             Sincronizar(false, true);
             if (AvisarEspera()) return;
             Mensaje("Sincronizado con bbport", Juego.Obtenidos + " de " + Juego.Trofeos.Count + " trofeos · " + Juego.Porcentaje + "%");
+        }
+
+        // Vuelve a los valores de fábrica solo los ajustes de una pestaña de Configuración.
+        // Nunca toca la carpeta de bbport, la sincronización ni los trofeos.
+        public void RestablecerSeccion(string seccion)
+        {
+            var d = new Ajustes();
+            var a = Ajustes;
+            switch (seccion)
+            {
+                case "avisos":
+                    bool avisosAntes = a.Avisos;
+                    a.Posicion = d.Posicion; a.PosX = d.PosX; a.PosY = d.PosY;
+                    a.Tamano = d.Tamano; a.Segundos = d.Segundos; a.Velocidad = d.Velocidad;
+                    a.Guardar();
+                    if (avisosAntes != d.Avisos) CambiarAvisos(d.Avisos); else Probar('X');
+                    break;
+                case "sonido":
+                    a.Sonido = d.Sonido; a.Volumen = d.Volumen; a.Guardar();
+                    break;
+                case "sync":
+                    a.UnoPorUno = d.UnoPorUno; a.Guardar();
+                    break;
+                case "general":
+                    a.Hora = d.Hora; Fecha.Formato = a.Hora;
+                    a.MostrarOcultos = d.MostrarOcultos;
+                    if (a.Atajos != d.Atajos) CambiarAtajos(d.Atajos);
+                    if (a.Idioma != d.Idioma) CambiarIdioma(d.Idioma);
+                    a.Guardar();
+                    break;
+                case "acerca":
+                    a.Actualizaciones = d.Actualizaciones; a.Guardar();
+                    break;
+            }
+            Mensaje("Sección restablecida", "Volvió a los valores de fábrica");
+            RefrescarVentana();
         }
 
         public void CambiarIdioma(string k)
@@ -814,7 +954,7 @@ namespace LogrosBB
 
         public string TextoTiempo()
         {
-            var total = Tiempo.Total(EnJuego ? (DateTime?)inicioProceso : null);
+            var total = TiempoTotal;
             var desde = Tiempo.Desde();
             string s = "Tiempo registrado: " + Tiempo.Largo(total);
             if (desde.HasValue) s += " (desde el " + desde.Value.ToString("d/M/yyyy") + ")";
@@ -851,7 +991,7 @@ namespace LogrosBB
         public static ContextMenuStrip MenuOscuro()
         {
             var m = new ContextMenuStrip { Renderer = new Pintor(), ShowImageMargin = false, ShowCheckMargin = true };
-            m.Font = new Font(Tema.Sans, 10f);
+            m.Font = Tema.F(Tema.Sans, 10f);
             m.BackColor = Tema.Panel; m.ForeColor = Tema.Texto;
             return m;
         }
@@ -996,7 +1136,7 @@ namespace LogrosBB
         public void Salir()
         {
             cerrando = true;
-            try { if (pidJuego != 0) Tiempo.Registrar(inicioProceso, finVentana ?? DateTime.Now); } catch { }
+            try { if (EnJuego) Medir(); if (claveTramo >= 0) Tiempo.Registrar(claveTramo, segTramo); } catch { }
             reloj.Stop();
             if (atajos != null) atajos.Liberar();
             bandeja.Visible = false;

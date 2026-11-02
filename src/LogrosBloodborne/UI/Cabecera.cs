@@ -27,19 +27,21 @@ namespace LogrosBB
                 var r = new Rectangle(0, 0, Width, Height);
                 if (j.Fondo != null)
                 {
-                    // desenfoque barato: achicar mucho y volver a agrandar; queda atmósfera sin letras de fondo
-                    using (var chico = new Bitmap(Math.Max(2, Width / 14), Math.Max(2, Height / 14), PixelFormat.Format32bppRgb))
+                    // Franja de ARRIBA del arte del juego (la luz y la textura, sin el logo ni el personaje),
+                    // con un desenfoque suave y oscurecida donde va el texto
+                    var f = j.Fondo;
+                    float srcH = f.Width * Height / (float)Math.Max(1, Width), srcW = f.Width;
+                    float maxH = f.Height * .29f; // sin llegar al logo ni al personaje
+                    if (srcH > maxH) { srcH = maxH; srcW = srcH * Width / (float)Math.Max(1, Height); }
+                    var src = new RectangleF((f.Width - srcW) / 2, 0, srcW, srcH);
+                    using (var chico = new Bitmap(Math.Max(2, Width / 3), Math.Max(2, Height / 3), PixelFormat.Format32bppRgb))
                     {
                         using (var gc = Graphics.FromImage(chico))
                         using (var ia0 = new ImageAttributes())
                         {
-                            gc.Clear(Tema.Fondo);
-                            gc.InterpolationMode = InterpolationMode.HighQualityBilinear;
+                            gc.InterpolationMode = InterpolationMode.HighQualityBicubic;
                             ia0.SetWrapMode(WrapMode.TileFlipXY);
-                            float esc = Math.Max(chico.Width / (float)j.Fondo.Width, chico.Height / (float)j.Fondo.Height) * 1.3f;
-                            float w0 = j.Fondo.Width * esc, h0 = j.Fondo.Height * esc;
-                            gc.DrawImage(j.Fondo, new Rectangle((int)((chico.Width - w0) / 2), (int)((chico.Height - h0) / 2), (int)Math.Ceiling(w0), (int)Math.Ceiling(h0)),
-                                0, 0, j.Fondo.Width, j.Fondo.Height, GraphicsUnit.Pixel, ia0);
+                            gc.DrawImage(f, new Rectangle(0, 0, chico.Width, chico.Height), src.X, src.Y, src.Width, src.Height, GraphicsUnit.Pixel, ia0);
                         }
                         using (var ia = new ImageAttributes())
                         {
@@ -48,7 +50,9 @@ namespace LogrosBB
                             g.DrawImage(chico, r, 0, 0, chico.Width, chico.Height, GraphicsUnit.Pixel, ia);
                         }
                     }
-                    using (var br = new SolidBrush(Color.FromArgb(185, 14, 12, 14))) g.FillRectangle(br, r);
+                    using (var br = new SolidBrush(Color.FromArgb(120, 10, 9, 12))) g.FillRectangle(br, r);
+                    // más oscuro a la izquierda (portada, título y progreso) y más claro a la derecha
+                    using (var lg = new LinearGradientBrush(r, Color.FromArgb(200, 10, 9, 12), Color.FromArgb(40, 10, 9, 12), 0f)) g.FillRectangle(lg, r);
                 }
                 var abajo = new RectangleF(0, Height * .5f, Width, Height * .5f + 1);
                 using (var lg = new LinearGradientBrush(abajo, Color.FromArgb(0, Tema.Fondo), Tema.Fondo, 90f)) g.FillRectangle(lg, abajo);
@@ -85,10 +89,10 @@ namespace LogrosBB
             bool tienePlat = plat != null && plat.Obtenido != null;
             int total = juego.Trofeos.Count, ob = juego.Obtenidos, faltan = juego.FaltanPlatino;
 
-            using (var fT = new Font(Tema.Serif, 22f, FontStyle.Bold))
-            using (var fS = new Font(Tema.Sans, 9.5f))
-            using (var fB = new Font(Tema.SansSemi, 10f, FontStyle.Bold))
-            using (var fP = new Font(Tema.Serif, 26f, FontStyle.Bold))
+            using (var fT = Tema.F(Tema.Serif, 22f, FontStyle.Bold))
+            using (var fS = Tema.F(Tema.Sans, 9.5f))
+            using (var fB = Tema.F(Tema.SansSemi, 10f, FontStyle.Bold))
+            using (var fP = Tema.F(Tema.Serif, 26f, FontStyle.Bold))
             {
                 float y = top - Tema.Px(4);
                 Tema.Escribir(g, juego.Titulo.ToUpperInvariant(), fT, Tema.Texto, new RectangleF(x, y, tw, Tema.Px(36)));
@@ -121,8 +125,8 @@ namespace LogrosBB
             if (!sinc) return;
             float cw = colDer / 4f;
             float cy = top;
-            using (var fN = new Font(Tema.SansSemi, 9.5f, FontStyle.Bold))
-            using (var fL = new Font(Tema.Sans, 8.3f))
+            using (var fN = Tema.F(Tema.SansSemi, 9.5f, FontStyle.Bold))
+            using (var fL = Tema.F(Tema.Sans, 8.3f))
             {
                 int i = 0;
                 foreach (char gr in "PGSB")
@@ -145,12 +149,19 @@ namespace LogrosBB
                 var rt = new RectangleF(derecha - colDer, ty, colDer, Tema.Px(18));
                 if (App.EnJuego && App.SesionDesde.HasValue)
                 {
-                    string ses = "EN VIVO  " + Tiempo.Reloj(DateTime.Now - App.SesionDesde.Value);
-                    float sw = g.MeasureString(ses, fN).Width;
-                    float sx = rt.X + (rt.Width - sw - Tema.Px(14)) / 2;
+                    // EN VIVO + reloj de la sesión + si los trofeos de bbport se están sincronizando
+                    bool okSync;
+                    string ses = "EN VIVO  " + Tiempo.Reloj(App.SesionTiempo);
+                    string est = "  ·  " + App.EstadoSync(out okSync);
+                    float sw = g.MeasureString(ses, fN).Width, ew = g.MeasureString(est, fL).Width;
+                    if (Tema.Px(14) + sw + ew > rt.Width + Tema.Px(20)) { est = ""; ew = 0; } // si no entra, solo el reloj
+                    float sx = rt.X + (rt.Width - sw - ew - Tema.Px(14)) / 2;
                     bool latido = DateTime.Now.Millisecond < 600;
                     using (var br = new SolidBrush(Color.FromArgb(latido ? 255 : 110, Tema.Vivo))) g.FillEllipse(br, sx, ty + Tema.Px(5), Tema.Px(8), Tema.Px(8));
                     Tema.Escribir(g, ses, fN, Tema.Vivo, new RectangleF(sx + Tema.Px(14), ty, sw + 4, Tema.Px(18)));
+                    if (est != "")
+                        Tema.Escribir(g, est, fL, okSync ? Color.FromArgb(150, 200, 160) : Color.FromArgb(222, 120, 112),
+                            new RectangleF(sx + Tema.Px(14) + sw, ty + Tema.Px(1), ew + 4, Tema.Px(18)));
                 }
                 else if (App.JuegoAbierto)
                     Tema.Escribir(g, "Launcher abierto · esperando el juego", fL, Tema.Tenue, rt, StringAlignment.Center);

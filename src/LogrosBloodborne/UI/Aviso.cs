@@ -32,6 +32,7 @@ namespace LogrosBB
             public char Insignia;     // grado del trofeo para la etiqueta de la esquina
             public Action AlGuardar;
             public bool SoloEnJuego = true;  // trofeos: solo con el juego al frente; lo pedido a mano sale siempre
+            public bool Prueba;              // "Probar": una nueva reemplaza a la anterior, nunca se amontonan
         }
 
         // Devuelve true si la ventana del juego está al frente (no Windows, no otra app)
@@ -59,10 +60,17 @@ namespace LogrosBB
 
         public static void Mostrar(Pedido p)
         {
-            if ((p.Mover || p.Resumen) && !p.SoloEnJuego)
+            if (p.Prueba || p.Resumen)
             {
-                // un resumen o un "mover" en pantalla se reemplaza en el momento; un trofeo real no se pisa
-                if (actual != null && !actual.IsDisposed && !(actual.p.Resumen || actual.p.Mover) && !p.Mover) { cola.Enqueue(p); return; }
+                // en la cola queda a lo sumo una prueba / un mensaje: los anteriores se descartan
+                var resto = cola.Where(x => !(x.Prueba || (x.Resumen && !x.SoloEnJuego))).ToList();
+                cola.Clear();
+                foreach (var x in resto) cola.Enqueue(x);
+            }
+            if ((p.Mover || p.Resumen || p.Prueba) && !p.SoloEnJuego)
+            {
+                // una prueba, un resumen o un "mover" reemplaza al que esté; un trofeo real no se pisa
+                if (actual != null && !actual.IsDisposed && !(actual.p.Resumen || actual.p.Mover || actual.p.Prueba) && !p.Mover) { cola.Enqueue(p); return; }
                 var viejo = actual;
                 actual = new Aviso(p);
                 if (viejo != null && !viejo.IsDisposed) { viejo.reloj.Stop(); viejo.Close(); }
@@ -72,6 +80,19 @@ namespace LogrosBB
             }
             cola.Enqueue(p);
             if (actual == null) Siguiente();
+        }
+
+        // Cancela lo que está esperando para salir; el que está en pantalla se va con su animación
+        public static void CancelarCola()
+        {
+            cola.Clear();
+            if (actual != null && !actual.IsDisposed && !actual.p.Mover) actual.Irse();
+        }
+
+        void Irse()
+        {
+            long ms = cron.ElapsedMilliseconds;
+            if (ms < total - salida) total = (int)Math.Max(ms, entrada) + salida;
         }
 
         static void Siguiente()
@@ -88,7 +109,6 @@ namespace LogrosBB
         Point destino;
         int entrada = 420, salida = 480, total;
         long ultimoCalculo;
-        bool siguienteYa;
         bool plat;
         float k = 1f; // escala propia del aviso (pantalla, DPI y tamaño elegido)
         int P(float v) { return (int)Math.Round(v * k); }
@@ -104,6 +124,8 @@ namespace LogrosBB
             StartPosition = FormStartPosition.Manual;
             BackColor = Tema.Fondo;
             DoubleBuffered = true;
+            // pedido desde el programa (probar, mover, mensajes): se decide una vez y no cambia al arrastrar
+            try { enApp = (p.Prueba || p.Mover || (p.Resumen && !p.SoloEnJuego)) && ZonaApp != null && ZonaApp(true).HasValue; } catch { enApp = false; }
             // se adapta a la pantalla del jugador: 1080p, 1440p, 4K o una ventana chica
             bool c0;
             var z0 = Zona(out c0);
@@ -134,13 +156,18 @@ namespace LogrosBB
 
         // Devuelve el rectángulo de la ventana del juego en pantalla, o null si no hay.
         public static Func<Rectangle?> ZonaJuego;
+        // Ventana del programa (si está al frente): las pruebas y mensajes pedidos desde ahí salen adentro,
+        // nunca sobre el juego (así el juego no pierde el primer plano ni se pausa)
+        public static Func<bool, Rectangle?> ZonaApp;
+        bool enApp;
 
         // Ubica el aviso en la esquina elegida de la ventana del juego (en ventana, sin bordes o
         // pantalla completa); si el juego no está abierto, en la pantalla activa.
         Rectangle Zona(out bool completa)
         {
             Rectangle? zj = null;
-            try { if (ZonaJuego != null) zj = ZonaJuego(); } catch { }
+            if (enApp) try { zj = ZonaApp(false); } catch { }
+            if (!zj.HasValue) try { if (ZonaJuego != null) zj = ZonaJuego(); } catch { }
             Rectangle a;
             Screen pantalla;
             if (zj.HasValue)
@@ -292,6 +319,7 @@ namespace LogrosBB
             SetWindowPos(Handle, new IntPtr(-1), 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0010 | 0x0040);
             if (p.Sonar && Ajustes.Sonido) Sonido.Tocar(p.Son != '\0' ? p.Son : p.Grado, Ajustes.Volumen, UserDir);
             try { timeBeginPeriod(1); } catch { }
+            Prerender();
             cron.Start();
             reloj.Start();
         }
@@ -333,7 +361,6 @@ namespace LogrosBB
             }
             else if (ms < total)
             {
-                if (!siguienteYa && ms > total - salida + 140 && actual == this && cola.Count > 0) { siguienteYa = true; actual = null; Siguiente(); }
                 // salida: se desliza hacia afuera (arriba si está arriba, abajo si está abajo) y se desvanece
                 double t = Suave((ms - (total - salida)) / (double)salida);
                 Opacity = .97 * (1 - t);
@@ -367,15 +394,18 @@ namespace LogrosBB
         // (destello, brillo y barra). Así la animación queda fluida aunque el juego use la GPU a full.
         Bitmap lienzo; RectangleF riCache;
 
+        void Prerender()
+        {
+            if (lienzo != null && lienzo.Size == Size) return;
+            if (lienzo != null) lienzo.Dispose();
+            lienzo = new Bitmap(Width, Height, PixelFormat.Format32bppPArgb);
+            using (var gl = Graphics.FromImage(lienzo)) { Tema.Calidad(gl); Dibujar(gl, 1000000, false); }
+        }
+
         protected override void OnPaint(PaintEventArgs e)
         {
             var g = e.Graphics;
-            if (lienzo == null || lienzo.Size != Size)
-            {
-                if (lienzo != null) lienzo.Dispose();
-                lienzo = new Bitmap(Width, Height, PixelFormat.Format32bppPArgb);
-                using (var gl = Graphics.FromImage(lienzo)) { Tema.Calidad(gl); Dibujar(gl, 1000000, false); }
-            }
+            Prerender();
             g.CompositingMode = CompositingMode.SourceCopy;
             g.DrawImageUnscaled(lienzo, 0, 0);
             g.CompositingMode = CompositingMode.SourceOver;
@@ -406,7 +436,7 @@ namespace LogrosBB
             {
                 float ty = Height - P(TiraMover) - P(2);
                 using (var pen = new Pen(Color.FromArgb(38, 255, 255, 255))) g.DrawLine(pen, P(18), ty, Width - P(18), ty);
-                using (var fb = new Font(Tema.SansSemi, F(9.4f), FontStyle.Bold))
+                using (var fb = Tema.F(Tema.SansSemi, F(9.4f), FontStyle.Bold))
                     for (int cual = 1; cual <= 2; cual++)
                     {
                         var rb = BotonMover(cual);
@@ -494,10 +524,10 @@ namespace LogrosBB
             }
 
             float tx = ri.Right + P(18), tw = Width - tx - pad;
-            using (var f1 = new Font(Tema.SansSemi, F(plat ? 9.8f : 9.2f), FontStyle.Bold))
-            using (var f2 = new Font(Tema.Serif, F(plat ? 17.5f : 15.5f), FontStyle.Bold))
-            using (var f3 = new Font(Tema.Sans, F(9.8f)))
-            using (var fc = new Font(Tema.SansSemi, F(9.4f), FontStyle.Bold))
+            using (var f1 = Tema.F(Tema.SansSemi, F(plat ? 9.8f : 9.2f), FontStyle.Bold))
+            using (var f2 = Tema.F(Tema.Serif, F(plat ? 17.5f : 15.5f), FontStyle.Bold))
+            using (var f3 = Tema.F(Tema.Sans, F(9.8f)))
+            using (var fc = Tema.F(Tema.SansSemi, F(9.4f), FontStyle.Bold))
             {
                 var stc = g.Save();
                 g.SetClip(new RectangleF(tx, 0, tw + 1, Height)); // nada se sale de su zona

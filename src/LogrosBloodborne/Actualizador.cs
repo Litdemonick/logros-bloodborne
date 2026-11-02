@@ -9,8 +9,7 @@ using System.Text.RegularExpressions;
 
 namespace LogrosBB
 {
-    // Busca versiones nuevas en GitHub Releases y actualiza con el instalador (Inno Setup) en modo
-    // silencioso. Es lo único que se conecta a internet, y se puede desactivar en Configuración.
+    // Busca versiones nuevas en GitHub Releases y actualiza abriendo el instalador (Inno Setup). Es lo único que se conecta a internet, y se puede desactivar en Configuración.
     static class Actualizador
     {
         const string Api = "https://api.github.com/repos/Litdemonick/logros-bloodborne/releases/latest";
@@ -76,8 +75,9 @@ namespace LogrosBB
                     File.Delete(exe);
                     return "La descarga no pasó la verificación de seguridad (SHA-256). No se instaló nada.";
                 }
-                // el instalador cierra esta copia, actualiza en la misma carpeta y la vuelve a abrir
-                Process.Start(new ProcessStartInfo(exe, "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /RELANZAR=1") { UseShellExecute = true });
+                // se abre el instalador normal (con sus pantallas) y el programa se cierra enseguida para
+                // dejarle libre la carpeta; al terminar, el instalador ofrece volver a abrirlo
+                Process.Start(new ProcessStartInfo(exe, "/SP- /NORESTART") { UseShellExecute = true });
                 return null;
             }
             catch (Exception ex) { return "No se pudo actualizar: " + ex.Message; }

@@ -12,6 +12,7 @@ namespace LogrosBB
         public int Volumen = 60;           // ni muy fuerte ni muy bajo
         public bool Avisos = true;         // notificaciones activadas
         public bool UnoPorUno = true;      // al sincronizar: los perdidos de a uno (si no, un resumen)
+        public bool SaltarPerdidos = false; // los perdidos no se muestran: quedan como vistos
         public double Tamano = 1.0;        // tamaño de la notificación
         public double Velocidad = 1.0;     // velocidad de aparecer / desaparecer
         public string Idioma = "auto";
@@ -63,6 +64,7 @@ namespace LogrosBB
                         case "actualizaciones": a.Actualizaciones = v != "0"; break;
                         case "avisos": a.Avisos = v != "0"; break;
                         case "unoporuno": a.UnoPorUno = v != "0"; break;
+                        case "saltarperdidos": a.SaltarPerdidos = v == "1"; break;
                         case "tamano": double.TryParse(v, NumberStyles.Float, CultureInfo.InvariantCulture, out a.Tamano); a.Tamano = Math.Max(.7, Math.Min(1.5, a.Tamano)); break;
                     }
                 }
@@ -91,7 +93,7 @@ namespace LogrosBB
                     "idioma=" + Idioma, "posicion=" + Posicion,
                     "ocultos=" + (MostrarOcultos ? "1" : "0"), "segundos=" + Segundos,
                     "posx=" + PosX.ToString("0.####", CultureInfo.InvariantCulture), "posy=" + PosY.ToString("0.####", CultureInfo.InvariantCulture),
-                    "atajos=" + (Atajos ? "1" : "0"), "avisos=" + (Avisos ? "1" : "0"), "unoporuno=" + (UnoPorUno ? "1" : "0"),
+                    "atajos=" + (Atajos ? "1" : "0"), "avisos=" + (Avisos ? "1" : "0"), "unoporuno=" + (UnoPorUno ? "1" : "0"), "saltarperdidos=" + (SaltarPerdidos ? "1" : "0"),
                     "tamano=" + Tamano.ToString("0.##", CultureInfo.InvariantCulture), "hora=" + Hora, "velocidad=" + Velocidad.ToString("0.##", CultureInfo.InvariantCulture), "sync=" + (Sincronizado ? "1" : "0"), "actualizaciones=" + (Actualizaciones ? "1" : "0")
                 });
             }

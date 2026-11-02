@@ -35,19 +35,38 @@ namespace LogrosBB
 
         public void MostrarConfig(string tab = null)
         {
-            if (config == null)
+            if (EnConfig) { config.IrA(tab); config.Mostrar(); return; }
+            Fundido.Hacer(this, () =>
             {
-                config = new Configuracion(app) { Dock = DockStyle.Fill };
-                config.Volver += () => { config.Visible = false; Refrescar(); };
-                Controls.Add(config);
+                SuspendLayout();
+                if (config == null)
+                {
+                    config = new Configuracion(app) { Dock = DockStyle.Fill };
+                    config.Volver += CerrarConfig;
+                    Controls.Add(config);
+                }
+                // en Configuración no va la portada grande: todo el alto queda para las opciones
+                Cab.Visible = false;
+                config.Visible = true;
+                panelSync.Visible = Lista.Visible = barra.Visible = false;
                 config.BringToFront();
-                Cab.SendToBack(); // la cabecera queda arriba
-            }
-            config.Visible = true;
-            panelSync.Visible = Lista.Visible = barra.Visible = false;
-            config.BringToFront();
-            config.IrA(tab);
-            config.Mostrar();
+                config.IrA(tab);
+                ResumeLayout(true);
+                config.Mostrar();
+            });
+        }
+
+        public void CerrarConfig()
+        {
+            if (!EnConfig) return;
+            Fundido.Hacer(this, () =>
+            {
+                SuspendLayout();
+                config.Visible = false;
+                Cab.Visible = true;
+                ResumeLayout(true);
+                Refrescar();
+            });
         }
         readonly Boton bSync;
         readonly System.Windows.Forms.Timer animar = new System.Windows.Forms.Timer { Interval = 16 };
@@ -62,13 +81,14 @@ namespace LogrosBB
             ForeColor = Tema.Texto;
             StartPosition = FormStartPosition.CenterScreen;
             MaximizeBox = false;
-            Font = new Font(Tema.Sans, 9.5f);
+            Font = Tema.F(Tema.Sans, 9.5f);
             // diseño estático: tamaño fijo (se achica solo si la pantalla no da)
             var area = Screen.FromPoint(Cursor.Position).WorkingArea;
             // se puede agrandar libremente; nunca más chica que el diseño, así nada se encima
             FormBorderStyle = FormBorderStyle.Sizable;
             ClientSize = new Size(Math.Min(Tema.Px(960), area.Width - Tema.Px(40)), Math.Min(Tema.Px(760), area.Height - Tema.Px(60)));
-            MinimumSize = new Size(Math.Min(Size.Width, area.Width), Math.Min(Tema.Px(640), area.Height));
+            // alto mínimo: que siempre entren la cabecera, la barra y varias filas (no se "come" nada)
+            MinimumSize = new Size(Math.Min(Size.Width, area.Width), Math.Min(Tema.Px(700), area.Height));
             MaximizeBox = true;
             int m = Tema.Px(24);
 
@@ -82,14 +102,15 @@ namespace LogrosBB
             barra.Paint += (s, e) => { using (var pen = new Pen(Tema.Borde)) e.Graphics.DrawLine(pen, m, barra.Height - 1, barra.Width - m, barra.Height - 1); };
 
             tabs.Sel = "todos";
-            tabs.AnchoFijo = 104;
+            tabs.AnchoFijo = 112;
+            tabs.Marco = true;
             tabs.Cambio += k => { Lista.Filtro = k; Lista.Arriba(); Refrescar(); };
             barra.Controls.Add(tabs);
 
             buscar.BorderStyle = BorderStyle.None;
             buscar.BackColor = Tema.Panel;
             buscar.ForeColor = Tema.Texto;
-            buscar.Font = new Font("Segoe UI", 10f);
+            buscar.Font = Tema.F(Tema.Sans, 10f);
             SetCue(buscar, "Buscar trofeo…   Ctrl+F");
             buscar.MaxLength = 60;
             buscar.ShortcutsEnabled = true;
@@ -122,8 +143,9 @@ namespace LogrosBB
             bOrden.Width = Tema.Px(96);
             bOrden.Click += delegate { MenuOrden().Show(bOrden, new Point(0, bOrden.Height + 4)); };
             barra.Controls.Add(bOrden);
-            bConfig = new Boton("Configuración");
-            bConfig.Width = Tema.Px(136);
+            bConfig = new Boton("Configuración") { Dibujo = Tema.Engranaje };
+            bConfig.Width = Tema.Px(42);
+            new ToolTip().SetToolTip(bConfig, "Configuración");
             bConfig.Click += delegate { app.AbrirConfig(); };
             barra.Controls.Add(bConfig);
             barra.Resize += delegate { Ubicar(); };
@@ -141,7 +163,7 @@ namespace LogrosBB
                 g.Clear(Color.FromArgb(17, 14, 16));
                 Tema.Calidad(g);
                 using (var pen = new Pen(Tema.Borde)) g.DrawLine(pen, 0, 0, pie.Width, 0);
-                using (var f = new Font(Tema.Sans, 8.5f))
+                using (var f = Tema.F(Tema.Sans, 8.5f))
                 {
                     if (app.Novedad == null && app.SinNombres)
                     {
@@ -165,7 +187,7 @@ namespace LogrosBB
             };
 
             bActualizar = new Boton("Actualizar") { Primario = true, Detras = Color.FromArgb(17, 14, 16), Size = new Size(Tema.Px(120), Tema.Px(26)), Visible = false };
-            bActualizar.Font = new Font(Tema.SansSemi, 8.8f, FontStyle.Bold);
+            bActualizar.Font = Tema.F(Tema.SansSemi, 8.8f, FontStyle.Bold);
             bActualizar.Click += delegate { if (app.Novedad != null) app.PedirActualizar(); else if (app.SinNombres) app.AgregarClave(); };
             pie.Controls.Add(bActualizar);
             pie.Resize += delegate { bActualizar.Location = new Point(pie.Width - m - bActualizar.Width, (pie.Height - bActualizar.Height) / 2); };
@@ -176,7 +198,7 @@ namespace LogrosBB
             // Primera vez: nada salta solo; el jugador conecta con bbport cuando quiere.
             panelSync.Dock = DockStyle.Fill;
             bSync = new Boton("Sincronizar con bbport") { Primario = true, Detras = Tema.Panel };
-            bSync.Font = new Font(Tema.SansSemi, 10.5f, FontStyle.Bold);
+            bSync.Font = Tema.F(Tema.SansSemi, 10.5f, FontStyle.Bold);
             bSync.Ajustar(240); bSync.Height = Tema.Px(42);
             bSync.Click += delegate { app.PrimeraSincronizacion(); };
             panelSync.Controls.Add(bSync);
@@ -185,9 +207,9 @@ namespace LogrosBB
                 var g = e.Graphics; g.Clear(Tema.Fondo); Tema.Calidad(g);
                 var r = TarjetaSync();
                 using (var p = Tema.Redondo(r, Tema.Px(10))) using (var br = new SolidBrush(Tema.Panel)) using (var pen = new Pen(Tema.Borde)) { g.FillPath(br, p); g.DrawPath(pen, p); }
-                using (var f1 = new Font(Tema.Serif, 17f, FontStyle.Bold))
-                using (var f2 = new Font(Tema.Sans, 10f))
-                using (var f3 = new Font(Tema.Sans, 8.8f))
+                using (var f1 = Tema.F(Tema.Serif, 17f, FontStyle.Bold))
+                using (var f2 = Tema.F(Tema.Sans, 10f))
+                using (var f3 = Tema.F(Tema.Sans, 8.8f))
                 {
                     Tema.Escribir(g, "Conectá tus trofeos con bbport", f1, Tema.Texto, new RectangleF(r.X, r.Y + Tema.Px(30), r.Width, Tema.Px(34)), StringAlignment.Center);
                     Tema.Escribir(g, "Vas a ver los trofeos que ya tenés, y los que te perdiste van a ir saliendo en orden, una sola vez. Después se sincroniza solo cada vez que abrís el programa.", f2, Tema.Tenue,
@@ -225,7 +247,7 @@ namespace LogrosBB
         {
             base.OnKeyDown(e);
             if (e.Control && e.KeyCode == Keys.F) { buscar.Focus(); e.SuppressKeyPress = true; }
-            else if (e.KeyCode == Keys.Escape && EnConfig) { config.Visible = false; Refrescar(); }
+            else if (e.KeyCode == Keys.Escape && EnConfig) CerrarConfig();
             else if (e.KeyCode == Keys.Escape && !buscar.Focused) Hide();
         }
 

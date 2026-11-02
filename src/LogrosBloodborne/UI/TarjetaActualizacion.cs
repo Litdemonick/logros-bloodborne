@@ -105,16 +105,16 @@ namespace LogrosBB
                 case App.EstadoAct.Buscando: titulo = "Buscando actualizaciones…"; desc = "Revisando GitHub. Tenés la versión " + v + "."; break;
                 case App.EstadoAct.AlDia: titulo = "Estás al día"; desc = "Tenés la última versión (" + v + ")."; break;
                 case App.EstadoAct.Hay: titulo = "Versión nueva disponible: " + n; desc = "Tenés la " + v + ". Se descarga, se verifica (SHA-256) y se instala encima: tus trofeos y ajustes se mantienen."; break;
-                case App.EstadoAct.Confirmar: titulo = "¿Instalar la versión " + n + "?"; desc = "El programa se cierra, se actualiza y se vuelve a abrir solo. Tus trofeos y ajustes se mantienen."; break;
-                case App.EstadoAct.Descargando: titulo = "Instalando la versión " + n + "…"; desc = "Descargando y verificando. El programa se va a cerrar y volver a abrir solo."; break;
+                case App.EstadoAct.Confirmar: titulo = "¿Instalar la versión " + n + "?"; desc = "Se abre el instalador y el programa se cierra. Seguí sus pasos: tus trofeos y ajustes se mantienen."; break;
+                case App.EstadoAct.Descargando: titulo = "Instalando la versión " + n + "…"; desc = "Descargando y verificando… después se abre el instalador y el programa se cierra."; break;
                 case App.EstadoAct.Error: titulo = app.Novedad != null ? "No se pudo actualizar" : "No pude buscar actualizaciones"; desc = app.ErrorAct ?? "Probá de nuevo en un rato."; break;
                 default: titulo = "Actualizaciones"; desc = "Tenés la versión " + v + ". Nunca se instala nada sin que lo confirmes."; break;
             }
             float tx = ri.Right + Tema.Px(16);
             // el texto siempre tiene el mismo ancho (el de los dos botones), aunque haya uno solo
             float tw = b2.Left - Tema.Px(16) - tx;
-            using (var f1 = new Font(Tema.SansSemi, 10.3f, FontStyle.Bold))
-            using (var f2 = new Font(Tema.Sans, 8.8f))
+            using (var f1 = Tema.F(Tema.SansSemi, 10.3f, FontStyle.Bold))
+            using (var f2 = Tema.F(Tema.Sans, 8.8f))
             {
                 float ty = Height / 2f - Tema.Px(26);
                 Tema.Escribir(g, titulo, f1, destacar ? Tema.Oro : Tema.Texto, new RectangleF(tx, ty, tw, Tema.Px(20)));

@@ -187,11 +187,11 @@ namespace LogrosBB
             g.Clear(Tema.Fondo);
             Tema.Calidad(g);
             float mx = Margen, ancho = Width - mx * 2;
-            using (var fNom = new Font(Tema.SansSemi, 11f, FontStyle.Bold))
-            using (var fDet = new Font(Tema.Sans, 9.3f))
-            using (var fChico = new Font(Tema.SansSemi, 9f, FontStyle.Bold))
-            using (var fFecha = new Font(Tema.Sans, 8.8f))
-            using (var fSec = new Font(Tema.Serif, 13.5f, FontStyle.Bold))
+            using (var fNom = Tema.F(Tema.SansSemi, 11f, FontStyle.Bold))
+            using (var fDet = Tema.F(Tema.Sans, 9.3f))
+            using (var fChico = Tema.F(Tema.SansSemi, 9f, FontStyle.Bold))
+            using (var fFecha = Tema.F(Tema.Sans, 8.8f))
+            using (var fSec = Tema.F(Tema.Serif, 13.5f, FontStyle.Bold))
             {
                 if (filas.Count == 1 && filas[0].Seccion == "")
                 {
@@ -276,7 +276,7 @@ namespace LogrosBB
             else
             {
                 using (var p = Tema.Redondo(ri, Tema.Px(6))) using (var br = new SolidBrush(Tema.Fondo)) using (var pen = new Pen(Tema.Borde)) { g.FillPath(br, p); g.DrawPath(pen, p); }
-                using (var fq = new Font(Tema.Serif, 18f, FontStyle.Bold)) Tema.Escribir(g, "?", fq, Tema.Tenue, ri, StringAlignment.Center, false, StringAlignment.Center);
+                using (var fq = Tema.F(Tema.Serif, 18f, FontStyle.Bold)) Tema.Escribir(g, "?", fq, Tema.Tenue, ri, StringAlignment.Center, false, StringAlignment.Center);
             }
 
             float col = Tema.Px(170);

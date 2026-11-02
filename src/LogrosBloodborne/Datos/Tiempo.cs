@@ -33,10 +33,15 @@ namespace LogrosBB
             catch { }
         }
 
-        public static void Registrar(DateTime inicio, DateTime ahora)
+        // Cada tramo se guarda con su clave (el momento en que el programa empezó a verlo) y los segundos
+        // que realmente se vieron. Así no se cuenta tiempo de juego anterior a abrir el programa, ni la
+        // PC suspendida con el juego abierto.
+        public static long Clave(DateTime inicio) { return inicio.ToUniversalTime().Ticks; }
+
+        public static void Registrar(long k, double segundos)
         {
             Cargar();
-            long k = inicio.ToUniversalTime().Ticks, s = (long)Math.Max(0, (ahora - inicio).TotalSeconds);
+            long s = (long)Math.Max(0, segundos);
             long prev;
             if (sesiones.TryGetValue(k, out prev) && prev >= s) return;
             sesiones[k] = s;
@@ -50,13 +55,13 @@ namespace LogrosBB
             catch { }
         }
 
-        public static TimeSpan Total(DateTime? inicioActual)
+        // Total guardado + el tramo en curso (que puede no estar guardado todavía)
+        public static TimeSpan Total(long kActual, double segActual)
         {
             Cargar();
             long s = 0;
-            long kActual = inicioActual.HasValue ? inicioActual.Value.ToUniversalTime().Ticks : -1;
             foreach (var kv in sesiones) if (kv.Key != kActual) s += kv.Value;
-            if (inicioActual.HasValue) s += (long)Math.Max(0, (DateTime.Now - inicioActual.Value).TotalSeconds);
+            if (kActual >= 0) s += (long)Math.Max(0, segActual);
             return TimeSpan.FromSeconds(s);
         }
 
