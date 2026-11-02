@@ -43,6 +43,7 @@ namespace LogrosBB
             tabs.Sel = "avisos";
             tabs.AnchoFijo = 126;
             tabs.Height = Tema.Px(40);
+            tabs.Linea = true;
             tabs.Cambio += k => Armar();
             cab.Controls.Add(tabs);
             cab.Resize += delegate { int w = tabs.AnchoTotal(); tabs.Width = w; tabs.Location = new Point((cab.Width - w) / 2, cab.Height - tabs.Height - 1); };
@@ -240,8 +241,8 @@ namespace LogrosBB
                                             new[] { "abajo-izquierda", "Abajo a la izquierda" }, new[] { "abajo-derecha", "Abajo a la derecha" } }
                             .Concat(aj.Posicion == "libre" ? new[] { new[] { "libre", "Donde lo dejaste (a mano)" } } : new string[0][]).ToArray(),
                             () => aj.Posicion, k => { if (k == "libre") return; aj.Posicion = k; aj.Guardar(); app.Probar('X'); }));
-                    Fila("Mover a mano", "Arrastrá el aviso a donde quieras y tocá Guardar. «Restablecer» lo vuelve arriba al centro.",
-                        Grupo(Btn("Mover el aviso…", () => app.MoverAviso(), 150), Btn("Restablecer", () => app.RestablecerPosicion(), 102)));
+                    Fila("Mover a mano", "Arrastrá el aviso a donde quieras y tocá Guardar. «Al centro» lo vuelve arriba al centro.",
+                        Grupo(Btn("Mover el aviso…", () => app.MoverAviso(), 150), Btn("Al centro", () => app.RestablecerPosicion(), 102)));
                     var tam = new Deslizador { Min = 70, Max = 150, Paso = 5, Valor = (int)Math.Round(aj.Tamano * 100), Width = Tema.Px(AnchoCtl), Formato = v => v + "%" };
                     tam.Soltado += v => { aj.Tamano = v / 100.0; aj.Guardar(); app.Probar('X'); };
                     Fila("Tamaño", "Se adapta solo a tu pantalla; esto lo agranda o achica.", tam);

@@ -104,6 +104,7 @@ namespace LogrosBB
             tabs.Sel = "todos";
             tabs.AnchoFijo = 112;
             tabs.Marco = true;
+            tabs.Linea = true;
             tabs.Cambio += k => { Lista.Filtro = k; Lista.Arriba(); Refrescar(); };
             barra.Controls.Add(tabs);
 

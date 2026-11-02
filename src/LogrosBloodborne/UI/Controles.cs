@@ -88,6 +88,7 @@ namespace LogrosBB
         public string Sel;
         public int AnchoFijo;   // si > 0, todas las pestañas miden lo mismo: el diseño no se mueve
         public bool Marco;      // dentro de un marco redondeado, con la elegida resaltada
+        public bool Linea;      // dibuja la línea separadora de abajo (la que el control taparía)
         public event Action<string> Cambio;
         int sobreI = -1;
         readonly List<RectangleF> zonas = new List<RectangleF>();
@@ -137,6 +138,7 @@ namespace LogrosBB
             g.Clear(Detras);
             Tema.Calidad(g);
             Medir(g);
+            if (Linea) using (var pen = new Pen(Tema.Borde)) g.DrawLine(pen, 0, Height - 1, Width, Height - 1);
             if (Marco && zonas.Count > 0)
             {
                 var caja = new RectangleF(.5f, Tema.Px(7) + .5f, zonas[zonas.Count - 1].Right + Tema.Px(4), Height - Tema.Px(14) - 1);
